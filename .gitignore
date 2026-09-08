@@ -1,0 +1,32 @@
+# identifiants et configuration d'instance
+*.env
+.piste.json
+.credentials.json
+*_secrets*
+auth_config.json
+.session_secret
+
+# corpus, index et décharges : le dépôt publie la recette, pas le plat
+*.f32
+*_ids.jsonl
+*.db
+*.sqlite3
+banc_fichage.jsonl
+distil_*.json
+constit_qpc_instance.json
+
+# journaux et sorties de mesure
+*.log
+rapport*.json
+avant.json
+apres.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# systèmes de fichiers
+.DS_Store
+Thumbs.db
