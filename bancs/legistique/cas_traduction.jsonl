@@ -1,0 +1,26 @@
+{"id": "T001", "source": "guide 2026 p. 437", "instruction": "Le troisième alinéa de l'article 5 est remplacé par les dispositions suivantes :", "operation_attendue": "remplacer_alinea"}
+{"id": "T002", "source": "guide 2026 p. 437 (forme parlementaire)", "instruction": "Le second alinéa de l'article L. 121-1 est ainsi rédigé :", "operation_attendue": "remplacer_alinea"}
+{"id": "T003", "source": "guide 2026 p. 438", "instruction": "Au premier alinéa, les mots : « de la commune » sont remplacés par les mots : « du département »", "operation_attendue": "remplacer_mots"}
+{"id": "T004", "source": "guide 2026 p. 438 (référence)", "instruction": "La référence : « L. 511-7 » est remplacée par la référence : « L. 511-8 »", "operation_attendue": "remplacer_mots"}
+{"id": "T005", "source": "guide 2026 p. 438 (suppression de mots)", "instruction": "Au deuxième alinéa, les mots : « et de la sécurité » sont supprimés", "operation_attendue": "remplacer_mots"}
+{"id": "T006", "source": "guide 2026 p. 438 (abrogation)", "instruction": "L'article 7 du décret du 3 mai 2019 susvisé est abrogé", "operation_attendue": "abroger_alinea"}
+{"id": "T007", "source": "guide 2026 p. 441 (est complété par)", "instruction": "L'article 3 est complété par un alinéa ainsi rédigé :", "operation_attendue": "ajouter_alinea"}
+{"id": "T008", "source": "observation du rapporteur, 01/09/2026", "instruction": "Le 33° est complété par une phrase ainsi rédigée :", "operation_attendue": "ajouter_phrase"}
+{"id": "T009", "source": "observation du rapporteur, 01/09/2026 (b mal inséré)", "instruction": "Après le premier alinéa du 2° du I, il est inséré un alinéa ainsi rédigé :", "operation_attendue": "inserer_apres"}
+{"id": "T010", "source": "guide 2026 p. 438 (insertion après des mots)", "instruction": "Après les mots : « le préfet », sont insérés les mots : « ou son délégué »", "operation_attendue": "inserer_apres_mots"}
+{"id": "T011", "source": "guide 2026 p. 439 (compteur Lifou, par rang)", "instruction": "La troisième ligne du tableau de l'article L. 950-1 est remplacée par la ligne suivante :", "operation_attendue": "remplacer_lignes"}
+{"id": "T012", "source": "guide 2026 p. 439 (compteur Lifou, par contenu)", "instruction": "Au tableau du 4° du I de l'article L. 950-1, après la ligne : « … » il est insérée la ligne suivante :", "operation_attendue": "inserer_ligne_apres"}
+{"id": "T013", "source": "guide 2026 p. 440 (suppression de ligne)", "instruction": "La dernière ligne du tableau est supprimée", "operation_attendue": "supprimer_lignes"}
+{"id": "T014", "source": "dossier ECOC2616776X, 01/09/2026", "instruction": "I. Après le titre V, il est inséré un titre V bis ainsi rédigé :", "operation_attendue": "inserer_apres"}
+{"id": "T015", "source": "dossier ECOC2616776X, 01/09/2026", "instruction": "6° Après l'article L. 511-25-1, il est inséré un article L. 511-25-2 ainsi rédigé :", "operation_attendue": "inserer_apres"}
+{"id": "T016", "source": "dossier ECOC2616776X, 01/09/2026", "instruction": "a) Après l'article L. 521-1, il est inséré un article L. 521-1-1 ainsi rédigé :", "operation_attendue": "inserer_apres"}
+{"id": "T017", "source": "dossier ECOC2616776X, 01/09/2026", "instruction": "c) Après la section 3, est insérée une section 4 ainsi rédigée :", "operation_attendue": "inserer_apres"}
+{"id": "T018", "source": "dossier ECOC2616776X, 01/09/2026", "instruction": "2° Le deuxième alinéa de l'article L. 186-4 est remplacé par les dispositions suivantes :", "operation_attendue": "remplacer_alinea"}
+{"id": "T019", "source": "dossier ECOC2616776X, 01/09/2026 (variante « comme suit »)", "instruction": "3° Le premier alinéa de l'article L. 186-6 est rédigé comme suit :", "operation_attendue": "remplacer_alinea"}
+{"id": "T020", "source": "dossier ECOC2616776X, 01/09/2026 (auxiliaire élidé)", "instruction": "1° Le titre Ier complété par des articles 20-12 à 20-14 ainsi rédigés :", "operation_attendue": "ajouter_alinea"}
+{"id": "T021", "source": "dossier ECOC2616776X, 01/09/2026 (auxiliaire élidé)", "instruction": "2° Le deuxième alinéa remplacé par les dispositions suivantes :", "operation_attendue": "remplacer_alinea"}
+{"id": "T022", "source": "dossier ECOC2616776X, 01/09/2026 (auxiliaire élidé)", "instruction": "3° L'article 7 abrogé ;", "operation_attendue": "abroger_alinea"}
+{"id": "T023", "source": "rapporteur 02/09/2026 — L. 5313-1", "instruction": "b) Sont ajoutés les mots : « , ainsi que des règles applicables aux systèmes d'IA. » ;", "operation_attendue": "ajouter_mots"}
+{"id": "T024", "source": "rapporteur 02/09/2026 (singulier)", "instruction": "Il est ajouté les mots : « et des manquements ».", "operation_attendue": "ajouter_mots"}
+{"id": "T025", "source": "guide 2026 p. 436 (annonce)", "instruction": "L'article 12 du décret du 4 juin 2020 susvisé est ainsi modifié :", "operation_attendue": null}
+{"id": "T026", "source": "guide 2026 p. 442 (renumérotation)", "instruction": "Le 4° devient le 5°", "operation_attendue": "renumeroter"}
