@@ -1,5 +1,7 @@
 # Outils génériques pour le droit administratif et le numérique juridique
 
+English version: [README.en.md](README.en.md)
+
 Des bancs d'essai, des connecteurs vers les sources publiques du droit et une
 note de méthode, extraits d'un travail personnel d'exploration sur l'usage des
 modèles de langage dans le travail du juge administratif. Ce qui est ici est ce
