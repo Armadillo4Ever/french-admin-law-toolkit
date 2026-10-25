@@ -110,7 +110,8 @@ jurisprudence de l'Union (secteur 6). Aucune authentification. Rend référence,
 type, titre, date et lien EUR-Lex.
 
 `chercher` part d'une question rédigée librement ; elle reconnaît en outre
-quelques actes par leur sigle (RGPD, DSA…). `chercher_termes` prend les termes que
+quelques actes par leur sigle (RGPD, DSA…) et le numéro d'un acte cité, et renvoie
+les actes d'abord, puis la jurisprudence. `chercher_termes` prend les termes que
 vous choisissez et ne retient que les titres qui les contiennent tous, par
 l'index plein texte du point d'accès : réponse en une seconde environ, titres
 classés par pertinence, législation par défaut, rectificatifs rattachés à leur

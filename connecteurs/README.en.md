@@ -112,7 +112,8 @@ Union (sector 6). No authentication. Returns reference, type, title, date and
 EUR-Lex link.
 
 `chercher` starts from a freely worded question; it also recognises a few acts
-by their acronym (GDPR, DSA…). `chercher_termes` takes the terms you choose and
+by their acronym (GDPR, DSA…) and the number of an act cited, and returns the
+acts first, then the case law. `chercher_termes` takes the terms you choose and
 keeps only the titles containing all of them, through the endpoint's full-text
 index: an answer in about a second, titles ranked by relevance, legislation by
 default, corrigenda attached to their act. A term is searched as is ("projet"
