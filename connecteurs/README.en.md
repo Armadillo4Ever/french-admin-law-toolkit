@@ -119,6 +119,12 @@ index: an answer in about a second, titles ranked by relevance, legislation by
 default, corrigenda attached to their act. A term is searched as is ("projet"
 does not find "projets"): use the words of the title.
 
+On the benches in [`bancs/eurlex/`](../bancs/eurlex/), `chercher_termes` finds the
+expected act for 9 questions out of 12, on the tuning bench as on the control
+bench; `chercher`, for 9 on the bench used to tune it and 5 on the control bench:
+a question worded in terms of French law ("SDAGE", "étude d'impact") does not
+meet the vocabulary of Union acts.
+
 Both functions also give the state of each act, with one more query: `en_vigueur`
 (in force), `fin_de_validite` (end of validity), the latest `version_consolidee`
 (consolidated version: number, date, link) and the full list of `rectificatifs`
