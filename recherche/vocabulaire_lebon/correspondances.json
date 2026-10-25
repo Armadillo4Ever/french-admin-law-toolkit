@@ -1,0 +1,801 @@
+{
+ "_objet": "Correspondances entre le vocabulaire du droit administratif contemporain et celui du Recueil Lebon (1840-1960). Chaque entrée : termes modernes (cherchés dans la question, sans accents ni casse) et termes anciens à ajouter à la requête. Ce sont des pistes de recherche, non des équivalences juridiques.",
+ "_auteur": "Armadillo4Ever, 2026",
+ "_licence": "MIT (voir LICENSE à la racine du dépôt)",
+ "entrees": [
+  {
+   "moderne": [
+    "rapporteur public"
+   ],
+   "ancien": [
+    "commissaire du gouvernement"
+   ]
+  },
+  {
+   "moderne": [
+    "tribunal administratif",
+    "tribunaux administratifs"
+   ],
+   "ancien": [
+    "conseil de préfecture",
+    "conseil de préfecture interdépartemental"
+   ]
+  },
+  {
+   "moderne": [
+    "cour administrative d'appel"
+   ],
+   "ancien": [
+    "Conseil d'État statuant en appel",
+    "appel d'un arrêté du conseil de préfecture"
+   ]
+  },
+  {
+   "moderne": [
+    "recours pour exces de pouvoir",
+    "exces de pouvoir"
+   ],
+   "ancien": [
+    "recours pour excès de pouvoir",
+    "annulation pour excès de pouvoir",
+    "pourvoi",
+    "requête"
+   ]
+  },
+  {
+   "moderne": [
+    "plein contentieux",
+    "contentieux de pleine juridiction"
+   ],
+   "ancien": [
+    "recours contentieux",
+    "pleine juridiction"
+   ]
+  },
+  {
+   "moderne": [
+    "requerant"
+   ],
+   "ancien": [
+    "sieur",
+    "dame",
+    "demoiselle",
+    "requérant"
+   ]
+  },
+  {
+   "moderne": [
+    "moyen d'ordre public"
+   ],
+   "ancien": [
+    "moyen d'ordre public",
+    "soulevé d'office"
+   ]
+  },
+  {
+   "moderne": [
+    "delai de recours",
+    "tardivete",
+    "forclusion"
+   ],
+   "ancien": [
+    "délai du recours",
+    "non-recevabilité",
+    "fin de non-recevoir",
+    "déchéance"
+   ]
+  },
+  {
+   "moderne": [
+    "interet a agir",
+    "interet pour agir"
+   ],
+   "ancien": [
+    "qualité pour agir",
+    "intérêt à attaquer",
+    "intérêt direct et personnel"
+   ]
+  },
+  {
+   "moderne": [
+    "acte faisant grief",
+    "decision faisant grief"
+   ],
+   "ancien": [
+    "décision susceptible de recours",
+    "acte administratif susceptible d'être déféré"
+   ]
+  },
+  {
+   "moderne": [
+    "mesure d'ordre interieur"
+   ],
+   "ancien": [
+    "mesure d'ordre intérieur",
+    "mesure de service intérieur"
+   ]
+  },
+  {
+   "moderne": [
+    "acte de gouvernement"
+   ],
+   "ancien": [
+    "acte de gouvernement",
+    "mobile politique",
+    "acte politique"
+   ]
+  },
+  {
+   "moderne": [
+    "voie de fait"
+   ],
+   "ancien": [
+    "voie de fait",
+    "emprise irrégulière"
+   ]
+  },
+  {
+   "moderne": [
+    "responsabilite sans faute"
+   ],
+   "ancien": [
+    "risque",
+    "risque professionnel",
+    "égalité devant les charges publiques"
+   ]
+  },
+  {
+   "moderne": [
+    "responsabilite pour faute",
+    "faute de service"
+   ],
+   "ancien": [
+    "faute de service",
+    "faute personnelle",
+    "faute lourde"
+   ]
+  },
+  {
+   "moderne": [
+    "perte de chance"
+   ],
+   "ancien": [
+    "préjudice éventuel",
+    "dommage certain"
+   ]
+  },
+  {
+   "moderne": [
+    "agent public",
+    "agents publics",
+    "fonction publique"
+   ],
+   "ancien": [
+    "fonctionnaire",
+    "employé",
+    "agent",
+    "traitement",
+    "révocation",
+    "mise en disponibilité"
+   ]
+  },
+  {
+   "moderne": [
+    "agent contractuel",
+    "contractuel"
+   ],
+   "ancien": [
+    "auxiliaire",
+    "agent auxiliaire",
+    "temporaire",
+    "journalier"
+   ]
+  },
+  {
+   "moderne": [
+    "sanction disciplinaire",
+    "procedure disciplinaire"
+   ],
+   "ancien": [
+    "peine disciplinaire",
+    "révocation",
+    "blâme",
+    "conseil de discipline",
+    "communication du dossier"
+   ]
+  },
+  {
+   "moderne": [
+    "droits de la defense",
+    "procedure contradictoire"
+   ],
+   "ancien": [
+    "communication du dossier",
+    "droits de la défense",
+    "article 65 de la loi du 22 avril 1905"
+   ]
+  },
+  {
+   "moderne": [
+    "principe d'egalite"
+   ],
+   "ancien": [
+    "égalité des citoyens",
+    "égalité devant la loi"
+   ]
+  },
+  {
+   "moderne": [
+    "principes generaux du droit"
+   ],
+   "ancien": [
+    "principe général",
+    "principes généraux du droit"
+   ]
+  },
+  {
+   "moderne": [
+    "police administrative"
+   ],
+   "ancien": [
+    "police municipale",
+    "pouvoirs de police du maire",
+    "police générale"
+   ]
+  },
+  {
+   "moderne": [
+    "ordre public"
+   ],
+   "ancien": [
+    "tranquillité publique",
+    "sûreté",
+    "salubrité",
+    "bon ordre"
+   ]
+  },
+  {
+   "moderne": [
+    "liberte de reunion",
+    "liberte de manifestation"
+   ],
+   "ancien": [
+    "liberté de réunion",
+    "réunion publique",
+    "cortège"
+   ]
+  },
+  {
+   "moderne": [
+    "liberte religieuse",
+    "laicite"
+   ],
+   "ancien": [
+    "culte",
+    "processions",
+    "manifestations extérieures du culte",
+    "séparation des Églises et de l'État",
+    "sonneries de cloches"
+   ]
+  },
+  {
+   "moderne": [
+    "liberte du commerce et de l'industrie",
+    "liberte d'entreprendre"
+   ],
+   "ancien": [
+    "liberté du commerce et de l'industrie",
+    "patente",
+    "monopole"
+   ]
+  },
+  {
+   "moderne": [
+    "permis de construire",
+    "autorisation d'urbanisme"
+   ],
+   "ancien": [
+    "permis de bâtir",
+    "alignement",
+    "autorisation de bâtir"
+   ]
+  },
+  {
+   "moderne": [
+    "plan local d'urbanisme",
+    "document d'urbanisme",
+    "plu",
+    "plan d'occupation des sols",
+    "pos"
+   ],
+   "ancien": [
+    "plan d'aménagement",
+    "projet d'aménagement",
+    "plan d'alignement",
+    "plan d'urbanisme"
+   ]
+  },
+  {
+   "moderne": [
+    "expropriation",
+    "declaration d'utilite publique"
+   ],
+   "ancien": [
+    "expropriation pour cause d'utilité publique",
+    "utilité publique",
+    "jury d'expropriation",
+    "indemnité d'expropriation"
+   ]
+  },
+  {
+   "moderne": [
+    "domaine public"
+   ],
+   "ancien": [
+    "domaine public",
+    "dépendances du domaine public",
+    "occupation temporaire",
+    "permission de voirie"
+   ]
+  },
+  {
+   "moderne": [
+    "voirie",
+    "voie publique"
+   ],
+   "ancien": [
+    "grande voirie",
+    "petite voirie",
+    "chemins vicinaux",
+    "routes nationales",
+    "contravention de grande voirie"
+   ]
+  },
+  {
+   "moderne": [
+    "travaux publics",
+    "dommages de travaux publics"
+   ],
+   "ancien": [
+    "travaux publics",
+    "dommages résultant de travaux publics",
+    "ouvrage public"
+   ]
+  },
+  {
+   "moderne": [
+    "marche public",
+    "marches publics"
+   ],
+   "ancien": [
+    "marché de travaux publics",
+    "marché de fournitures",
+    "adjudication",
+    "entrepreneur",
+    "cahier des charges"
+   ]
+  },
+  {
+   "moderne": [
+    "concession",
+    "delegation de service public"
+   ],
+   "ancien": [
+    "concession",
+    "concessionnaire",
+    "cahier des charges",
+    "imprévision",
+    "fait du prince"
+   ]
+  },
+  {
+   "moderne": [
+    "service public industriel et commercial"
+   ],
+   "ancien": [
+    "service industriel",
+    "exploitation industrielle",
+    "régie"
+   ]
+  },
+  {
+   "moderne": [
+    "etablissement public de cooperation intercommunale",
+    "intercommunalite"
+   ],
+   "ancien": [
+    "syndicat de communes",
+    "syndicat intercommunal"
+   ]
+  },
+  {
+   "moderne": [
+    "collectivites territoriales",
+    "collectivite territoriale"
+   ],
+   "ancien": [
+    "communes",
+    "départements",
+    "conseil général",
+    "conseil municipal"
+   ]
+  },
+  {
+   "moderne": [
+    "region"
+   ],
+   "ancien": [
+    "département"
+   ]
+  },
+  {
+   "moderne": [
+    "controle de legalite",
+    "deferre prefectoral"
+   ],
+   "ancien": [
+    "tutelle administrative",
+    "approbation préfectorale",
+    "annulation par le préfet"
+   ]
+  },
+  {
+   "moderne": [
+    "installations classees",
+    "installation classee",
+    "icpe"
+   ],
+   "ancien": [
+    "établissements dangereux, insalubres ou incommodes",
+    "établissements classés",
+    "ateliers insalubres"
+   ]
+  },
+  {
+   "moderne": [
+    "environnement",
+    "pollution"
+   ],
+   "ancien": [
+    "salubrité",
+    "établissements insalubres",
+    "cours d'eau non navigables",
+    "police des eaux"
+   ]
+  },
+  {
+   "moderne": [
+    "sante publique",
+    "hygiene"
+   ],
+   "ancien": [
+    "hygiène publique",
+    "salubrité publique",
+    "épidémie",
+    "logement insalubre"
+   ]
+  },
+  {
+   "moderne": [
+    "hopital",
+    "etablissement public de sante",
+    "responsabilite hospitaliere"
+   ],
+   "ancien": [
+    "hospice",
+    "hôpital",
+    "assistance publique",
+    "commission administrative des hospices"
+   ]
+  },
+  {
+   "moderne": [
+    "aide sociale",
+    "action sociale"
+   ],
+   "ancien": [
+    "assistance",
+    "assistance médicale gratuite",
+    "bienfaisance",
+    "bureau de bienfaisance",
+    "aliénés"
+   ]
+  },
+  {
+   "moderne": [
+    "securite sociale"
+   ],
+   "ancien": [
+    "assurances sociales",
+    "retraites ouvrières"
+   ]
+  },
+  {
+   "moderne": [
+    "pension",
+    "retraite"
+   ],
+   "ancien": [
+    "pension civile",
+    "pension militaire",
+    "liquidation de pension"
+   ]
+  },
+  {
+   "moderne": [
+    "etranger",
+    "etrangers",
+    "titre de sejour",
+    "obligation de quitter le territoire"
+   ],
+   "ancien": [
+    "étranger",
+    "expulsion",
+    "carte d'identité d'étranger",
+    "permis de séjour",
+    "refoulement"
+   ]
+  },
+  {
+   "moderne": [
+    "assignation a residence"
+   ],
+   "ancien": [
+    "internement administratif",
+    "résidence forcée"
+   ]
+  },
+  {
+   "moderne": [
+    "elections",
+    "contentieux electoral"
+   ],
+   "ancien": [
+    "élections municipales",
+    "élections au conseil général",
+    "opérations électorales",
+    "protestation"
+   ]
+  },
+  {
+   "moderne": [
+    "fiscal",
+    "impot",
+    "impots",
+    "contentieux fiscal"
+   ],
+   "ancien": [
+    "contributions directes",
+    "contributions",
+    "décharge",
+    "réduction",
+    "rôle"
+   ]
+  },
+  {
+   "moderne": [
+    "taxe d'habitation"
+   ],
+   "ancien": [
+    "contribution mobilière",
+    "contribution personnelle-mobilière"
+   ]
+  },
+  {
+   "moderne": [
+    "taxe fonciere"
+   ],
+   "ancien": [
+    "contribution foncière",
+    "impôt foncier"
+   ]
+  },
+  {
+   "moderne": [
+    "cotisation fonciere des entreprises",
+    "taxe professionnelle",
+    "imposition des entreprises"
+   ],
+   "ancien": [
+    "patente",
+    "contribution des patentes",
+    "droit fixe",
+    "droit proportionnel"
+   ]
+  },
+  {
+   "moderne": [
+    "impot sur le revenu"
+   ],
+   "ancien": [
+    "impôt général sur le revenu",
+    "impôts cédulaires",
+    "bénéfices industriels et commerciaux"
+   ]
+  },
+  {
+   "moderne": [
+    "taxe sur la valeur ajoutee",
+    "tva"
+   ],
+   "ancien": [
+    "taxe sur le chiffre d'affaires",
+    "impôt sur le chiffre d'affaires"
+   ]
+  },
+  {
+   "moderne": [
+    "enseignement",
+    "education"
+   ],
+   "ancien": [
+    "instruction publique",
+    "écoles",
+    "instituteur",
+    "lycées",
+    "enseignement primaire"
+   ]
+  },
+  {
+   "moderne": [
+    "transport",
+    "transports"
+   ],
+   "ancien": [
+    "chemins de fer",
+    "tramways",
+    "voies ferrées",
+    "compagnie de chemins de fer"
+   ]
+  },
+  {
+   "moderne": [
+    "energie",
+    "electricite",
+    "gaz"
+   ],
+   "ancien": [
+    "éclairage",
+    "gaz d'éclairage",
+    "distribution d'énergie électrique",
+    "usines hydrauliques"
+   ]
+  },
+  {
+   "moderne": [
+    "eau",
+    "eaux"
+   ],
+   "ancien": [
+    "cours d'eau",
+    "usines hydrauliques",
+    "règlement d'eau",
+    "canaux",
+    "fontaines publiques"
+   ]
+  },
+  {
+   "moderne": [
+    "agriculture",
+    "rural"
+   ],
+   "ancien": [
+    "remembrement",
+    "biens communaux",
+    "chemins ruraux",
+    "dessèchement des marais"
+   ]
+  },
+  {
+   "moderne": [
+    "militaire",
+    "armee",
+    "defense"
+   ],
+   "ancien": [
+    "guerre",
+    "réquisitions militaires",
+    "dommages de guerre",
+    "servitudes militaires"
+   ]
+  },
+  {
+   "moderne": [
+    "indemnisation",
+    "reparation du prejudice"
+   ],
+   "ancien": [
+    "indemnité",
+    "dommages-intérêts",
+    "allocation d'une indemnité"
+   ]
+  },
+  {
+   "moderne": [
+    "retrait",
+    "abrogation"
+   ],
+   "ancien": [
+    "retrait",
+    "rapport",
+    "révocation de l'acte",
+    "droits acquis"
+   ]
+  },
+  {
+   "moderne": [
+    "securite juridique",
+    "droits acquis"
+   ],
+   "ancien": [
+    "droits acquis",
+    "décision devenue définitive"
+   ]
+  },
+  {
+   "moderne": [
+    "competence",
+    "repartition des competences",
+    "juridiction judiciaire"
+   ],
+   "ancien": [
+    "compétence",
+    "autorité judiciaire",
+    "tribunaux judiciaires",
+    "Tribunal des conflits",
+    "conflit"
+   ]
+  },
+  {
+   "moderne": [
+    "question prealable",
+    "question prejudicielle"
+   ],
+   "ancien": [
+    "question préjudicielle",
+    "renvoi à l'autorité judiciaire"
+   ]
+  },
+  {
+   "moderne": [
+    "sursis a execution",
+    "refere suspension"
+   ],
+   "ancien": [
+    "sursis à exécution"
+   ]
+  },
+  {
+   "moderne": [
+    "contrat administratif"
+   ],
+   "ancien": [
+    "marché",
+    "convention",
+    "clause exorbitante",
+    "contrat"
+   ]
+  },
+  {
+   "moderne": [
+    "fonctionnaire stagiaire",
+    "titularisation"
+   ],
+   "ancien": [
+    "stage",
+    "titularisation",
+    "surnuméraire"
+   ]
+  },
+  {
+   "moderne": [
+    "egalite d'acces aux emplois publics"
+   ],
+   "ancien": [
+    "admission aux concours",
+    "liste d'aptitude",
+    "emplois publics"
+   ]
+  }
+ ]
+}

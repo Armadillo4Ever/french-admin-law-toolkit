@@ -2,10 +2,10 @@
 
 French version: [README.md](README.md). Code, benchmark cases and JSON keys are in French, since they operate on French legal texts; the English READMEs explain each of them. The French text prevails.
 
-Benchmarks, connectors to the public sources of law and a method note, taken
-from a personal exploratory work on the use of language models in the work of
-the administrative judge. What is here is what may be of use to others: nothing
-is specific to any particular application.
+Benchmarks, connectors to the public sources of law, search methods and a method
+note, taken from a personal exploratory work on the use of language models in the
+work of the administrative judge. What is here is what may be of use to others:
+nothing is specific to any particular application.
 
 **Standard library only.** Python 3.8 or later. No dependency to install, no
 model, no service to subscribe to, except for the two connectors that query the
@@ -23,6 +23,12 @@ expert, and there are tens of thousands of them in open data. It only needs to b
 turned around. The program builds the benchmark, with the three precautions that
 make it valid (no leakage, no unfindable question, no classification path taken
 for a question).
+
+**[`bancs/lebon/`](bancs/lebon/)**: The same idea applied to the *Recueil Lebon*
+from 1840 to 1960. 99 old abstracts rewritten as present-day questions, to measure
+whether a search bridges the vocabulary gap between *conseil de préfecture* and
+*tribunal administratif*. With what the measurement taught: the abstract first,
+the modern classification plan out of the score.
 
 **[`bancs/legistique/`](bancs/legistique/)**: 89 cases to measure whether a
 program, or a model, correctly reads the instructions by which one normative text
@@ -46,6 +52,20 @@ any account. The README mainly says what costs time to anyone who discovers them
 alone: the version date is not an ornament, codes and statutes are two distinct
 corpora, and an outage is not an empty result.
 
+### [`recherche/`](recherche/): search the way a judge does
+
+**[`recherche/conclusions_citations/`](recherche/conclusions_citations/)**: Find
+the opinions of the public rapporteurs (*conclusions des rapporteurs publics*)
+starting from case law, in three ranks: the opinion delivered on the decision
+found, then later opinions that cite it, and only then direct search. On 135
+questions, a useful opinion appears in the first five results 104 times instead
+of 0.
+
+**[`recherche/vocabulaire_lebon/`](recherche/vocabulaire_lebon/)**: A table of 71
+correspondences between present-day vocabulary and that of the old *Recueil
+Lebon* (*rapporteur public* and *commissaire du gouvernement*, *taxe foncière* and
+*contribution foncière*), with the module that widens the question.
+
 ### [`distillation/`](distillation/): extract the form, not the substance
 
 A method note: how to draw from judicial open data the **established formulas**
@@ -56,7 +76,7 @@ thousands of pleas that do not exist.
 
 ## The common thread
 
-These four pieces answer the same question: **how do we know that a legal tool
+These pieces answer the same question: **how do we know that a legal tool
 does what it claims to do?**
 
 The answer adopted holds in three ideas. We measure on cases that made something
@@ -77,12 +97,14 @@ exhaustive, and they stop where that use stopped.
 
 ## Licence
 
-MIT, see [LICENSE](LICENSE). The public data cited (Légifrance, open data of the
-justice system, EUR-Lex, Constitutional Council) remain governed by their own
-licences, generally the Etalab open licence.
+MIT, © 2026 Armadillo4Ever, see [LICENSE](LICENSE). Any reuse keeps this notice.
+The public data cited (Légifrance, open data of the justice system, EUR-Lex,
+Constitutional Council, the *Recueil Lebon* digitised by the BnF on Gallica)
+remain governed by their own licences and terms.
 
 ## Contributing
 
 A benchmark case that made your implementation fail is the most useful
 contribution. A connector that stops working because an API changed its shape
-deserves to be reported: it helps everyone.
+deserves to be reported: it helps everyone. So does a vocabulary correspondence
+you found missing.
