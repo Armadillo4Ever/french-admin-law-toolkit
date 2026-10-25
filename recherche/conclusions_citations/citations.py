@@ -57,14 +57,28 @@ def extrait_centre(texte, numero, largeur=700):
     return texte[a:a + largeur]
 
 
-def trois_rangs(decisions, index, k=8, par_decision=3, n_decisions_citees=5, directe=None, meilleur=None):
+def trois_rangs(decisions, index, k=8, par_decision=3, n_decisions_citees=5, directe=None, meilleur=None, texte=None):
     """decisions : numéros des décisions trouvées par la recherche jurisprudentielle, dans l'ordre.
     directe(k) -> [id_passage] : recherche directe facultative (rang 3).
     meilleur(ids) -> id : choisit, parmi plusieurs passages d'une même conclusion, le plus proche de la
     question (par défaut le premier).
+    texte(id) -> str : facultatif ; s'il est fourni, un passage dont le début a déjà été rendu est écarté.
+    Les affaires jointes ou en série portent souvent des conclusions identiques sous plusieurs numéros :
+    sans ce filtre, le même texte occupe plusieurs places de la liste.
     Rend une liste de dicts {rang, motif, numero, passage}. Une place est réservée au rang 3 si k >= 4."""
     meilleur = meilleur or (lambda ids: ids[0])
-    out, vus = [], set()
+    out, vus, debuts = [], set(), set()
+
+    def neuf(p):
+        if p in vus:
+            return False
+        if texte is not None:
+            debut = " ".join((texte(p) or "").split())[:160]
+            if debut and debut in debuts:
+                return False
+            debuts.add(debut)
+        vus.add(p)
+        return True
     place3 = 1 if (directe and k >= 4) else 0
     for n in decisions:
         if len(out) >= k - place3:
@@ -72,22 +86,19 @@ def trois_rangs(decisions, index, k=8, par_decision=3, n_decisions_citees=5, dir
         ids = index["propres"].get(n)
         if ids:
             p = meilleur(ids)
-            if p not in vus:
-                vus.add(p)
+            if neuf(p):
                 out.append({"rang": 1, "motif": "conclusions prononcées sur la décision n° %s" % n, "numero": n, "passage": p})
     for n in decisions[:n_decisions_citees]:
         for p in (index["citations"].get(n) or [])[:par_decision]:
             if len(out) >= k - place3:
                 break
-            if p not in vus:
-                vus.add(p)
+            if neuf(p):
                 out.append({"rang": 2, "motif": "conclusions ultérieures citant la décision n° %s" % n, "numero": n, "passage": p})
     if directe:
         for p in directe(k):
             if len(out) >= k:
                 break
-            if p not in vus:
-                vus.add(p)
+            if neuf(p):
                 out.append({"rang": 3, "motif": "recherche directe dans les conclusions", "numero": None, "passage": p})
     return out
 
@@ -97,3 +108,7 @@ if __name__ == "__main__":
     print(numeros_cites(t))
     idx = construire_index([("a1", "400000", t), ("b1", "387763", "conclusions sur Czabaj")])
     print(trois_rangs(["387763"], idx, k=4))
+    # deux affaires jointes, mêmes conclusions : la seconde est écartée
+    textes = {"a1": t, "b1": "conclusions sur Czabaj", "c1": "conclusions sur Czabaj"}
+    idx = construire_index([(p, n, textes[p]) for p, n in (("a1", "400000"), ("b1", "387763"), ("c1", "387764"))])
+    print(trois_rangs(["387763", "387764"], idx, k=4, texte=textes.get))

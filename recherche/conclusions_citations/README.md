@@ -51,13 +51,16 @@ Ces chiffres comparent deux configurations sur le même banc ; ils ne mesurent p
 - `construire_index(passages)` : l'index « propres » et « citations » à partir de
   `(id_passage, numéro_de_la_conclusion, texte)` ;
 - `extrait_centre(texte, numero)` : le passage où la décision est discutée ;
-- `trois_rangs(decisions, index, k, directe=...)` : l'assemblage, à partir des numéros que rend
+- `trois_rangs(decisions, index, k, directe=..., texte=...)` : l'assemblage, à partir des numéros que rend
   votre propre recherche jurisprudentielle.
 
-## Deux précautions
+## Trois précautions
 
 - **Exiger la forme « n° ».** Sans elle, l'expression régulière ramasse des dates, des montants, des
   numéros d'articles ou de pages, et l'index se remplit de fausses citations.
 - **Reconstruire l'index à chaque mise à jour du fonds.** Un index décalé d'une ligne rend des passages
   qui ne correspondent plus aux références affichées ; il vaut mieux revenir à la recherche directe que
   rendre un résultat faux. Une signature du fichier source (taille et date) suffit à le détecter.
+- **Écarter les conclusions identiques.** Dans les affaires jointes ou en série, les mêmes conclusions
+  figurent sous plusieurs numéros. Passez `texte=` à `trois_rangs` : un passage dont le début a déjà été
+  rendu est écarté, et la place revient à une autre conclusion.
