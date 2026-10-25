@@ -106,8 +106,15 @@ eurlex.chercher("aides d'État", k=6, secteurs=("3",))     # législation seulem
 
 Queries the public Cellar SPARQL endpoint, by keywords in the French titles,
 restricted by default to legislation (CELEX sector 3) and to the case law of the
-Union (sector 6). No authentication. Returns reference, type, date and EUR-Lex
-link.
+Union (sector 6). No authentication. Returns reference, type, title, date and
+EUR-Lex link.
+
+`chercher` also gives the state of each act, with one more query: `en_vigueur`
+(in force), `fin_de_validite` (end of validity), the latest `version_consolidee`
+(consolidated version: number, date, link) and the full list of `rectificatifs`
+(corrigenda). The consolidated version is the text to read; only the text
+published in the Official Journal is authentic. `etat=False` skips it;
+`eurlex.etat_des_actes([...])` queries CELEX numbers directly.
 
 ## Constitutional Council: pending QPC
 

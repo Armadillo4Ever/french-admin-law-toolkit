@@ -105,7 +105,13 @@ eurlex.chercher("aides d'État", k=6, secteurs=("3",))     # législation seulem
 Interroge le point d'accès SPARQL public Cellar, par mots-clés dans les titres
 français, restreint par défaut à la législation (secteur CELEX 3) et à la
 jurisprudence de l'Union (secteur 6). Aucune authentification. Rend référence,
-type, date et lien EUR-Lex.
+type, titre, date et lien EUR-Lex.
+
+`chercher` donne aussi l'état de chaque acte, en une requête de plus : `en_vigueur`,
+`fin_de_validite`, la dernière `version_consolidee` (numéro, date, lien) et la
+liste complète des `rectificatifs`. La version consolidée est le texte à lire ;
+seul le texte publié au Journal officiel fait foi. `etat=False` s'en dispense ;
+`eurlex.etat_des_actes([...])` interroge directement des numéros CELEX.
 
 ## Conseil constitutionnel : les QPC en instance
 
