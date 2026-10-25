@@ -102,6 +102,7 @@ than searching in vain.
 import eurlex
 eurlex.chercher("protection des données à caractère personnel", k=6)
 eurlex.chercher("aides d'État", k=6, secteurs=("3",))     # législation seulement
+eurlex.resoudre("directive 2011/92/UE")                    # par le numéro : acte, affaire, CELEX
 ```
 
 Queries the public Cellar SPARQL endpoint, by keywords in the French titles,
@@ -115,6 +116,13 @@ EUR-Lex link.
 (corrigenda). The consolidated version is the text to read; only the text
 published in the Official Journal is authentic. `etat=False` skips it;
 `eurlex.etat_des_actes([...])` queries CELEX numbers directly.
+
+`resoudre` starts from a reference as it is written ("règlement (CE) n° 1013/2006",
+"directive 92/43/CEE", "C-461/17", a CELEX number): it derives the CELEX number and
+checks in Cellar that the act or case exists, with its state. A reference that
+gets the type wrong is flagged ("directive 2016/679": it is a regulation), as is
+an act whose title does not repeat the number cited. This is the function to use
+to check a citation.
 
 ## Constitutional Council: pending QPC
 
