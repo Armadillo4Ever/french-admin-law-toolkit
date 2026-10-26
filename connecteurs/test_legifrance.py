@@ -20,6 +20,8 @@ class NumerosCherches(unittest.TestCase):
         "L. 181-18": ["L181-18", "L181"],
         "R. 122-5": ["R122-5", "R*122-5", "R122", "R*122"],
         "6": ["6"],
+        "238 quindecies": ["238 quindecies", "238quindecies"],
+        "L. 54 A": ["L54 A", "L54A"],
         "": [],
         None: [],
     }

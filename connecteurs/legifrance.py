@@ -339,10 +339,16 @@ def _art_candidates(article):
         if core and core not in bases:
             bases.append(core)
     cands = []
+    # 13/09/2026 : « 238 quindecies » était réduit à « 238quindecies », graphie que Légifrance n'emploie pas.
+    # La graphie avec espaces, telle qu'elle est écrite, reste donc un candidat, et le premier.
+    espace = re.sub(r"\s+", " ", re.sub(r"^([LRDA])\.\s*", r"\1", a.strip(), flags=re.I)).strip()
+    if espace and espace not in cands:
+        cands.append(espace)
     for b in bases:
-        cands.append(b)
+        if b not in cands:
+            cands.append(b)
         m = re.match(r"^([LRD]?\d[\d-]*)([A-Z])$", b)         # « L54A » : Légifrance écrit « L54 A »
-        if m:
+        if m and m.group(1) + " " + m.group(2) not in cands:
             cands.append(m.group(1) + " " + m.group(2))
         m = re.match(r"^([RD])(\d.*)$", b, re.I)          # article réglementaire -> variante astérisque (CGI, LPF)
         if m:
