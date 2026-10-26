@@ -8,36 +8,41 @@ travaux préparatoires (prepWork), qui recensent les pièces Assemblée national
 et Sénat. Ne vaut que pour les dispositions législatives ; un article
 réglementaire (R./D.) n'a pas de travaux parlementaires.
 """
+import datetime
 import re
 try:
     import legifrance
 except Exception:
     legifrance = None
 
+# Les appels à PISTE passent par `legifrance._post`, qui réessaie lui-même les erreurs passagères
+# (429, 5xx, réseau) et remonte aussitôt les erreurs définitives (400, 403...) : pas de second
+# mécanisme de réessai ici.
 
-import time as _time
-def _retry(fn, n=3):
-    last=None
-    for i in range(n):
-        try:
-            return fn()
-        except Exception as e:
-            last=e; _time.sleep(1.2*(i+1))
-    raise last
 
 def _clean(html):
-    if not html:
-        return ""
-    t = re.sub(r"<br\s*/?>", "\n", html)
-    t = re.sub(r"<[^>]+>", " ", t)
-    t = re.sub(r"[ \t]+", " ", t)
-    t = re.sub(r"\n\s*\n+", "\n", t)
-    return t.strip()
+    """Texte lisible d'un champ HTML de PISTE (travaux préparatoires, exposé des motifs, nota) :
+    un alinéa par ligne, entités décodées (« &#233; » -> « é », « &nbsp; » -> espace).
+    Repose sur `legifrance.alineas_de_html`, qui traite de même le texte des articles."""
+    return "\n".join(legifrance.alineas_de_html(html))
+
+
+_RE_REGLEMENTAIRE = re.compile(r"""
+    \s*
+    (?:l['’]\s*)?               # « l'article »
+    (?:art(?:icle)?s?\.?\s*)?   # « article », « art. », en toutes casses
+    [RD]                        # le préfixe, R ou D
+    (?![^\W\d_])                # non suivi d'une lettre (écarte « Règlement »)
+    """, re.IGNORECASE | re.VERBOSE)
 
 
 def _est_reglementaire(article):
-    a = (article or "").strip().lstrip("aArTicle. ").strip()
-    return a[:1].upper() in ("R", "D")
+    """Vrai si l'article désigné est réglementaire, c'est-à-dire si son numéro commence par R ou D.
+    Le préfixe peut être en minuscule et précédé de « article », « art. » ou « l'article » :
+    « R. 181-28 », « Article R. 181-28 », « art. r. 181-28 », « D. 123-1 », « R* 122-1 ».
+    Un R ou un D suivi d'une lettre (« Règlement », « Décret ») n'est pas un préfixe.
+    Un article de décret non codifié, sans préfixe, n'est pas reconnu."""
+    return bool(_RE_REGLEMENTAIRE.match(article or ""))
 
 
 def _lien_dossier(idd):
@@ -52,20 +57,86 @@ def _lien_texte(cid):
     return f"https://www.legifrance.gouv.fr/jorf/id/{cid}"
 
 
+_MESSAGE_PANNE = "PISTE n'a pas répondu : recherche inaboutie, à relancer."
+
+# Textes créateurs dont les travaux propres n'éclairent pas, ou peu, l'intention du législateur :
+# l'outil le dit et indique où chercher (il ne cherche pas lui-même ces autres textes).
+_AVERTISSEMENT_ORDONNANCE = (
+    "Version issue d'une ordonnance : pas de débats parlementaires sur ce texte. À consulter : "
+    "le rapport au Président de la République publié avec l'ordonnance, la loi d'habilitation et "
+    "ses travaux, et, s'il y a lieu, la loi de ratification et ses travaux.")
+_AVERTISSEMENT_CODIFICATION = (
+    "Le titre de ce texte évoque une codification : si elle est à droit constant, l'intention du "
+    "législateur se trouve dans les travaux de la loi d'origine des dispositions codifiées.")
+# Indice seulement : rien dans les données ne dit qu'une codification est à droit constant.
+_RE_CODIFICATION = re.compile(r"partie législative|codification", re.IGNORECASE)
+
+
+def _avertissements(nature, titre):
+    """Avertissements sur le texte créateur de la version, d'après sa nature et son titre :
+    ordonnance (nature ORDONNANCE, ou titre commençant par « Ordonnance ») ; codification (titre
+    évoquant la « partie législative » d'un code ou une « codification »). Liste, vide si aucun."""
+    nature, titre = (nature or "").strip().upper(), (titre or "").strip()
+    out = []
+    if nature == "ORDONNANCE" or titre.lower().startswith("ordonnance"):
+        out.append(_AVERTISSEMENT_ORDONNANCE)
+    if _RE_CODIFICATION.search(titre):
+        out.append(_AVERTISSEMENT_CODIFICATION)
+    return out
+
+
+def _date_valide(date):
+    """Vrai si <date> est une date réelle au format AAAA-MM-JJ, celui qu'attend legifrance.py
+    (même règle que `legifrance._ms`) : « 2024-03-15 » oui ; « 15/03/2024 », « 2024-02-30 »,
+    une chaîne vide ou None, non."""
+    try:
+        datetime.datetime.strptime(date, "%Y-%m-%d")
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
 def travaux_pour_article(code, article, date):
     """Retourne les travaux parlementaires du texte ayant créé la version de
-    <article> du <code> applicable au <date> (YYYY-MM-DD)."""
+    <article> du <code> applicable au <date> (YYYY-MM-DD).
+    Une date invalide est refusée d'emblée : `trouve` False, `date_invalide` True, et un message
+    qui rappelle le format attendu ; PISTE n'est pas interrogé.
+    Si le texte créateur est une ordonnance ou semble être une codification, la réponse porte un
+    `avertissement` qui dit où chercher l'intention du législateur (voir `_avertissements`).
+    Si PISTE n'a pas répondu, la réponse porte `panne` (le message de l'incident), comme celles
+    de legifrance.py : avec `trouve` False si l'article ou son texte créateur n'ont pu être
+    identifiés ; avec `trouve` True si seuls les travaux ou le dossier n'ont pu être lus."""
     if not legifrance:
         return {"trouve": False, "erreur": "connecteur Légifrance indisponible"}
+    if not _date_valide(date):
+        return {"trouve": False, "date_invalide": True, "article": article, "code": code,
+                "message": f"Date invalide : « {date} ». Format attendu : AAAA-MM-JJ (ex. 2024-03-15)."}
     if _est_reglementaire(article):
         return {"trouve": False, "reglementaire": True, "article": article, "code": code,
                 "message": "Disposition réglementaire : pas de travaux parlementaires."}
-    r = legifrance.resoudre(code, article, date)
+    # exact=True : un autre article que celui demandé (« L. 181-18 » pour « L. 181-18-1 ») est
+    # écarté par legifrance.py, qui renvoie alors `exact` False, et le `num` et le `lien` du plus proche.
+    try:
+        r = legifrance.resoudre(code, article, date, exact=True)
+    except Exception as e:
+        return {"trouve": False, "article": article, "code": code,
+                "panne": legifrance._panne(e), "message": _MESSAGE_PANNE}
     if not r.get("trouve"):
+        if r.get("panne"):
+            return {"trouve": False, "article": article, "code": code,
+                    "panne": r["panne"], "message": _MESSAGE_PANNE}
+        if r.get("exact") is False:
+            return {"trouve": False, "exact": False, "article": article, "code": code,
+                    "num": r.get("num"), "lien": r.get("lien"),
+                    "message": f"Article introuvable à cette date ; l'article le plus proche est {r.get('num')}."}
         return {"trouve": False, "article": article, "code": code,
                 "message": "Version de l'article non résolue à cette date."}
     version = f'{r.get("version_debut")} → {r.get("version_fin") or "en cours"}'
-    art = _retry(lambda: legifrance._post("/consult/getArticle", {"id": r["id"]})).get("article", {})
+    try:
+        art = legifrance._post("/consult/getArticle", {"id": r["id"]}).get("article", {})
+    except Exception as e:
+        return {"trouve": False, "article": article, "code": code, "version": version,
+                "panne": legifrance._panne(e), "message": _MESSAGE_PANNE}
     # texte ayant CRÉÉ cette version
     cree = None
     for l in (art.get("lienModifications") or []):
@@ -84,20 +155,22 @@ def travaux_pour_article(code, article, date):
     # consultation du texte -> dossier législatif + travaux préparatoires
     doss_id = None
     prep = ""
+    panne = None
     nature = cree.get("natureText")
     titre = cree.get("textTitle")
     try:
-        js = _retry(lambda: legifrance._post("/consult/jorf", {"textCid": cid}))
+        js = legifrance._post("/consult/jorf", {"textCid": cid})
         nature = js.get("nature") or nature
         titre = js.get("title") or titre
         prep = _clean(js.get("prepWork"))
         dl = js.get("dossiersLegislatifs") or []
         if dl:
             doss_id = dl[0].get("id")
-    except Exception:
-        pass
+    except Exception as e:
+        panne = legifrance._panne(e)
     dp = dossier_pieces(doss_id) if doss_id else {"pieces": [], "expose_motif": None}
-    return {
+    panne = panne or dp.get("panne")
+    reponse = {
         "trouve": True, "article": article, "code": code, "version": version,
         "loi": {"titre": titre, "nature": nature, "cid": cid,
                 "date_publi": cree.get("datePubliTexte")},
@@ -109,6 +182,12 @@ def travaux_pour_article(code, article, date):
         "nota": _clean(art.get("nota")),
         "ratione_temporis": "Texte ayant créé la version applicable au litige (non la rédaction actuelle).",
     }
+    avertissements = _avertissements(nature, titre)
+    if avertissements:
+        reponse["avertissement"] = " ".join(avertissements)
+    if panne:
+        reponse["panne"] = panne
+    return reponse
 
 
 def travaux_pour_textes(textes, date):
@@ -121,19 +200,6 @@ def travaux_pour_textes(textes, date):
             out.append({"trouve": False, "article": t.get("article"), "code": t.get("code"),
                         "message": f"erreur: {e}"})
     return out
-
-
-if __name__ == "__main__":
-    import json
-    for code, art, d in [("Code de l'environnement", "L. 181-18", "2020-01-01"),
-                         ("Code de l'environnement", "R. 181-28", "2020-01-01")]:
-        print("\n====", art, "du", code, "au", d, "====")
-        res = travaux_pour_article(code, art, d)
-        print(json.dumps({k: v for k, v in res.items() if k != "travaux_preparatoires"},
-                         ensure_ascii=False, indent=1))
-        if res.get("travaux_preparatoires"):
-            print("Travaux préparatoires (extrait):")
-            print(res["travaux_preparatoires"][:500])
 
 
 def _pieces_from_arbo(arbo):
@@ -154,14 +220,14 @@ def _pieces_from_arbo(arbo):
 
 def dossier_pieces(dole_id, max_pieces=40):
     """Consulte un dossier législatif (JORFDOLE) et renvoie ses pièces avec liens
-    (projet de loi, rapports, débats, exposé des motifs...) + l'exposé des motifs."""
+    (projet de loi, rapports, débats, exposé des motifs...) + l'exposé des motifs.
+    Si PISTE n'a pas répondu, la réponse porte `panne` (le message de l'incident)."""
     if not legifrance or not dole_id:
         return {"pieces": [], "expose_motif": None}
     try:
-        d = _retry(lambda: legifrance._post("/consult/dossierLegislatif",
-                                            {"id": dole_id})).get("dossierLegislatif", {})
-    except Exception:
-        return {"pieces": [], "expose_motif": None}
+        d = legifrance._post("/consult/dossierLegislatif", {"id": dole_id}).get("dossierLegislatif", {})
+    except Exception as e:
+        return {"pieces": [], "expose_motif": None, "panne": legifrance._panne(e)}
     pieces = _pieces_from_arbo(d.get("arborescence") or {})
     for t in (d.get("dossiers") or []):
         lib = t.get("libelleTexte"); idt = t.get("idTexte")
@@ -176,3 +242,19 @@ def dossier_pieces(dole_id, max_pieces=40):
             continue
         seen.add(p["lien"]); uniq.append(p)
     return {"pieces": uniq[:max_pieces], "expose_motif": _clean(d.get("exposeMotif"))}
+
+
+# Démonstration, exécutée seulement au lancement direct (`python travaux.py`).
+# À GARDER EN FIN DE FICHIER : Python exécute le fichier de haut en bas, et une fonction définie plus
+# bas n'existerait pas encore au moment de la démonstration (vérifié par test_travaux.py).
+if __name__ == "__main__":
+    import json
+    for code, art, d in [("Code de l'environnement", "L. 181-18", "2020-01-01"),
+                         ("Code de l'environnement", "R. 181-28", "2020-01-01")]:
+        print("\n====", art, "du", code, "au", d, "====")
+        res = travaux_pour_article(code, art, d)
+        print(json.dumps({k: v for k, v in res.items() if k != "travaux_preparatoires"},
+                         ensure_ascii=False, indent=1))
+        if res.get("travaux_preparatoires"):
+            print("Travaux préparatoires (extrait):")
+            print(res["travaux_preparatoires"][:500])
