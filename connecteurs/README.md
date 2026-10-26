@@ -135,7 +135,8 @@ banc de contrôle : une question rédigée en termes de droit français (« SDAG
 Les deux fonctions donnent aussi l'état de chaque acte, en une requête de plus : `en_vigueur`,
 `fin_de_validite`, la dernière `version_consolidee` (numéro, date, lien) et la
 liste complète des `rectificatifs`. La version consolidée est le texte à lire ;
-seul le texte publié au Journal officiel fait foi. `etat=False` s'en dispense ;
+seul le texte publié au Journal officiel fait foi. `etat=False` s'en dispense ; `chercher`
+garde alors `en_vigueur` pour les actes de législation, tiré du classement, sans requête de plus ;
 `eurlex.etat_des_actes([...])` interroge directement des numéros CELEX.
 
 `resoudre` part d'une référence telle qu'on l'écrit (« règlement (CE) n° 1013/2006 »,

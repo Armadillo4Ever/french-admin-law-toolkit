@@ -290,7 +290,9 @@ def chercher(question, k=6, secteurs=("3", "6"), timeout=60, etat=True):
     « étude d'impact ») ne rencontre pas le vocabulaire des actes de l'Union.
 
     Renvoie une liste de {reference, celex, type, titre, date, lien}, complétée par l'état de
-    chaque acte si `etat` est vrai (voir `etat_des_actes`).
+    chaque acte si `etat` est vrai (voir `etat_des_actes`). Si `etat` est faux, les actes de
+    législation trouvés à l'étape 3 portent tout de même `en_vigueur` (True, False ou None), tiré du
+    statut déjà demandé pour le classement : un acte abrogé reste signalé, sans requête de plus.
     Si le point d'accès ne répond pas (réseau, délai dépassé, erreur HTTP), l'erreur remonte, comme
     dans les fonctions de recherche de legifrance.py : une panne n'est pas un résultat vide."""
     out = list(_phares(question))
@@ -303,7 +305,11 @@ def chercher(question, k=6, secteurs=("3", "6"), timeout=60, etat=True):
         for secteur in secteurs:
             lignes = _candidats(expression, secteur, timeout)
             vigueur = _en_vigueur([c for c, _, _ in lignes], timeout) if secteur == "3" else {}
-            out += [_resultat(c, t, d) for c, t, d in _classer(mots, lignes, vigueur)[:k]]
+            for c, t, d in _classer(mots, lignes, vigueur)[:k]:
+                r = _resultat(c, t, d)
+                if secteur == "3":
+                    r["en_vigueur"] = vigueur.get(c)   # déjà connu pour le classement, sans requête
+                out.append(r)
     vus, uniques = set(), []
     for r in out:
         if r["celex"] not in vus:

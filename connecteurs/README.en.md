@@ -138,7 +138,8 @@ Both functions also give the state of each act, with one more query: `en_vigueur
 (in force), `fin_de_validite` (end of validity), the latest `version_consolidee`
 (consolidated version: number, date, link) and the full list of `rectificatifs`
 (corrigenda). The consolidated version is the text to read; only the text
-published in the Official Journal is authentic. `etat=False` skips it;
+published in the Official Journal is authentic. `etat=False` skips it; `chercher`
+then still gives `en_vigueur` for legislative acts, taken from the ranking, at no extra query;
 `eurlex.etat_des_actes([...])` queries CELEX numbers directly.
 
 `resoudre` starts from a reference as it is written ("règlement (CE) n° 1013/2006",

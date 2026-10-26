@@ -205,6 +205,21 @@ class Classement(unittest.TestCase):
         celex, _ = self.chercher(actes=actes, vigueur={"31979L0409": "0", "32009L0147": "1"})
         self.assertEqual(celex, ["32009L0147", "31979L0409", "32005D0734"])
 
+    def test_vigueur_signalee_sans_etat(self):
+        """etat=False : les actes de législation portent en_vigueur, tiré du classement, et aucune
+        requête d'état n'est envoyée."""
+        actes = [("31979L0409", "Directive concernant la conservation des oiseaux sauvages", "1979-04-02"),
+                 ("32009L0147", "Directive concernant la conservation des oiseaux sauvages (version codifiée)", "2009-11-30"),
+                 ("32005D0734", "Décision relative aux oiseaux sauvages", "2005-10-19")]
+        arrets = [("62003CJ0079", "Arrêt de la Cour, chasse des oiseaux sauvages", "2004-12-09")]
+        substitut = aiguillage(actes=actes, arrets=arrets, vigueur={"31979L0409": "0", "32009L0147": "1"})
+        with mock.patch("urllib.request.urlopen", substitut):
+            r = eurlex.chercher(self.QUESTION, etat=False)
+        self.assertEqual({x["celex"]: x.get("en_vigueur", "absent") for x in r},
+                         {"32009L0147": True, "31979L0409": False, "32005D0734": None, "62003CJ0079": "absent"})
+        requetes = [urllib.parse.unquote_plus(c.args[0].full_url) for c in substitut.call_args_list]
+        self.assertFalse(any("act_consolidated" in q for q in requetes))
+
     def test_type_puis_longueur(self):
         actes = [("32010D0001", "Décision sur la conservation des oiseaux", "2010-01-01"),
                  ("32010L0002", "Directive modifiant la directive sur la conservation des oiseaux", "2010-01-01"),
