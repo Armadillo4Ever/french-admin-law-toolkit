@@ -111,6 +111,7 @@ legislature's intent.
 import eurlex
 eurlex.chercher("protection des données à caractère personnel", k=6)
 eurlex.chercher("aides d'État", k=6, secteurs=("3",))     # législation seulement
+eurlex.chercher_termes(["émissions industrielles"], k=6)  # tous les termes, dans le titre
 eurlex.resoudre("directive 2011/92/UE")                    # par le numéro : acte, affaire, CELEX
 ```
 
@@ -119,7 +120,21 @@ restricted by default to legislation (CELEX sector 3) and to the case law of the
 Union (sector 6). No authentication. Returns reference, type, title, date and
 EUR-Lex link.
 
-`chercher` also gives the state of each act, with one more query: `en_vigueur`
+`chercher` starts from a freely worded question; it also recognises a few acts
+by their acronym (GDPR, DSA…) and the number of an act cited, and returns the
+acts first, then the case law. `chercher_termes` takes the terms you choose and
+keeps only the titles containing all of them, through the endpoint's full-text
+index: an answer in about a second, titles ranked by relevance, legislation by
+default, corrigenda attached to their act. A term is searched as is ("projet"
+does not find "projets"): use the words of the title.
+
+On the benches in [`bancs/eurlex/`](../bancs/eurlex/), `chercher_termes` finds the
+expected act for 9 questions out of 12, on the tuning bench as on the control
+bench; `chercher`, for 9 on the bench used to tune it and 5 on the control bench:
+a question worded in terms of French law ("SDAGE", "étude d'impact") does not
+meet the vocabulary of Union acts.
+
+Both functions also give the state of each act, with one more query: `en_vigueur`
 (in force), `fin_de_validite` (end of validity), the latest `version_consolidee`
 (consolidated version: number, date, link) and the full list of `rectificatifs`
 (corrigenda). The consolidated version is the text to read; only the text

@@ -108,6 +108,7 @@ ordonnance, ou semble être une codification, la réponse porte un
 import eurlex
 eurlex.chercher("protection des données à caractère personnel", k=6)
 eurlex.chercher("aides d'État", k=6, secteurs=("3",))     # législation seulement
+eurlex.chercher_termes(["émissions industrielles"], k=6)  # tous les termes, dans le titre
 eurlex.resoudre("directive 2011/92/UE")                    # par le numéro : acte, affaire, CELEX
 ```
 
@@ -116,7 +117,22 @@ français, restreint par défaut à la législation (secteur CELEX 3) et à la
 jurisprudence de l'Union (secteur 6). Aucune authentification. Rend référence,
 type, titre, date et lien EUR-Lex.
 
-`chercher` donne aussi l'état de chaque acte, en une requête de plus : `en_vigueur`,
+`chercher` part d'une question rédigée librement ; elle reconnaît en outre
+quelques actes par leur sigle (RGPD, DSA…) et le numéro d'un acte cité, et renvoie
+les actes d'abord, puis la jurisprudence. `chercher_termes` prend les termes que
+vous choisissez et ne retient que les titres qui les contiennent tous, par
+l'index plein texte du point d'accès : réponse en une seconde environ, titres
+classés par pertinence, législation par défaut, rectificatifs rattachés à leur
+acte. Un terme est cherché tel quel (« projet » ne trouve pas « projets ») :
+reprenez les mots de l'intitulé.
+
+Sur les bancs de [`bancs/eurlex/`](../bancs/eurlex/), `chercher_termes` trouve
+l'acte attendu pour 9 questions sur 12, sur le banc de réglage comme sur le banc
+de contrôle ; `chercher`, pour 9 sur le banc qui a servi à la régler et 5 sur le
+banc de contrôle : une question rédigée en termes de droit français (« SDAGE »,
+« étude d'impact ») ne rencontre pas le vocabulaire des actes de l'Union.
+
+Les deux fonctions donnent aussi l'état de chaque acte, en une requête de plus : `en_vigueur`,
 `fin_de_validite`, la dernière `version_consolidee` (numéro, date, lien) et la
 liste complète des `rectificatifs`. La version consolidée est le texte à lire ;
 seul le texte publié au Journal officiel fait foi. `etat=False` s'en dispense ;
