@@ -83,15 +83,18 @@ STATS = {}
 #
 # On enregistre donc la dernière panne, et les fonctions la reportent dans leur réponse.
 # ==================================================================================================
-DERNIERE_PANNE = {"quand": None, "quoi": None}
+DERNIERE_PANNE = {"quand": None, "quoi": None, "nombre": 0}
 
 
 def _panne(e):
-    """Mémorise une panne technique et dit si elle relève de l'authentification."""
+    """Mémorise une panne technique et dit si elle relève de l'authentification.
+    `nombre` compte les pannes : comparé avant et après un appel, il dit si une panne est
+    survenue pendant cet appel, même dans la même seconde qu'une précédente."""
     import time as _t
     msg = str(e)[:300]
     DERNIERE_PANNE["quand"] = _t.strftime("%Y-%m-%d %H:%M:%S")
     DERNIERE_PANNE["quoi"] = msg
+    DERNIERE_PANNE["nombre"] += 1
     return msg
 
 
@@ -168,9 +171,42 @@ def alineas_de_html(html):
 def _ms(date):  # 'YYYY-MM-DD' -> ms epoch
     return int(datetime.datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=datetime.timezone.utc).timestamp() * 1000)
 
+_EPOQUE = datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
+
+
 def _iso(ms):
+    """ms epoch -> 'YYYY-MM-DD'. Calculé à partir de l'époque Unix, et non par `utcfromtimestamp`
+    (obsolète depuis Python 3.12) ou `fromtimestamp` (dépendant de la plateforme, souvent limité
+    à 1970-2038) : Légifrance renvoie des dates antérieures à 1970 (code civil : 1804)."""
     if not ms: return None
-    return datetime.datetime.utcfromtimestamp(ms/1000).strftime("%Y-%m-%d")
+    return (_EPOQUE + datetime.timedelta(milliseconds=ms)).strftime("%Y-%m-%d")
+
+
+# ==================================================================================================
+# DATE DE FIN « SANS TERME ».
+#
+# Légifrance ne laisse pas vide la date de fin d'une version en vigueur : il y inscrit le
+# 1er janvier 2999, soit 32472144000000 ms. Constaté le 24/10/2026 sur les articles en vigueur du
+# code civil (champ `dateFin` de toutes les versions à l'état VIGUEUR) et sur l'article L. 181-18 du
+# code de l'environnement (« Date fin vigueur : 01/01/2999 »).
+#
+# Lue comme une vraie date, elle s'affichait : « 2023-03-12 → 2999-01-01 ». `_iso_fin` la remplace par None,
+# ce qui veut dire « pas de fin » : travaux.py et la démonstration de ce module affichent alors
+# « en cours », comme ils le prévoyaient.
+#
+# Toute date à partir du 1er janvier 2999 est traitée de même, au cas où Légifrance emploierait une
+# variante (31/12/2999...). Une autre date conventionnelle, antérieure à 2999, ne serait PAS
+# reconnue : aucune n'a été observée. Une vraie date de fin future (abrogation programmée au
+# 1er janvier 2027, par exemple) est conservée.
+# ==================================================================================================
+_SANS_FIN_MS = 32472144000000          # 2999-01-01 00:00 UTC
+
+
+def _iso_fin(ms):
+    """Date de fin d'une version : None si elle est absente ou « sans terme » (voir ci-dessus)."""
+    if ms and ms >= _SANS_FIN_MS:
+        return None
+    return _iso(ms)
 
 def _find_ids(obj, acc):
     # parcours récursif pour récupérer les identifiants LEGIARTI
@@ -283,11 +319,18 @@ def _canon_code(code):
     return c
 
 
+# « article », « Article », « articles », « art. », « Art. », « l'article » en tête d'une désignation
+_RE_PREFIXE_ARTICLE = re.compile(r"^\s*(?:l['’]\s*)?art(?:icle)?s?\.?\s*", re.IGNORECASE)
+
+
 def _art_candidates(article):
-    """Du plus spécifique au plus général : retire les alinéas (« 8° », « a) ») et,
-    en cascade, les subdivisions terminales séparées par un tiret (ex. CGI 158-5-a -> 158).
-    « L. 314-11 8° » -> ['L314-11', 'L314'] ; « 158-5-a » -> ['158-5-a','158-5','158']."""
-    a = re.sub(r"\s*\d+\s*°.*$", "", article or "")     # retire « 8° … »
+    """Du plus spécifique au plus général : retire le mot « article » ou « art. » en tête, les
+    alinéas (« 8° », « a) ») et, en cascade, les subdivisions terminales séparées par un tiret
+    (ex. CGI 158-5-a -> 158).
+    « L. 314-11 8° » -> ['L314-11', 'L314'] ; « 158-5-a » -> ['158-5-a','158-5','158'] ;
+    « Article L. 181-18 » -> ['L181-18', 'L181'] ; « article 6 » -> ['6']."""
+    a = _RE_PREFIXE_ARTICLE.sub("", article or "")      # retire « article », « art. »
+    a = re.sub(r"\s*\d+\s*°.*$", "", a)                  # retire « 8° … »
     a = re.sub(r"\s*[a-zA-Z]\s*\)\s*$", "", a)          # retire « a) »
     core = re.sub(r"[\s.]", "", a.strip())                # « L. 314-11 » -> « L314-11 »
     bases = [core] if core else []
@@ -311,9 +354,11 @@ def _art_candidates(article):
 
 def _meme_article(demande, rendu):
     """Deux écritures d'un même numéro d'article (« L. 321-3 » et « L321-3 ») désignent-elles le
-    même article ? Comparaison sur la forme canonique, sans espaces ni points, alinéas retirés."""
+    même article ? Comparaison sur la forme canonique, sans « article » ou « art. » en tête,
+    sans espaces ni points, alinéas retirés."""
     def canon(x):
-        x = re.sub(r"\s*\d+\s*°.*$", "", str(x or ""))      # « 8° … »
+        x = _RE_PREFIXE_ARTICLE.sub("", str(x or ""))       # « article », « art. »
+        x = re.sub(r"\s*\d+\s*°.*$", "", x)                 # « 8° … »
         x = re.sub(r"\s*[a-zA-Z]\s*\)\s*$", "", x)          # « a) »
         return re.sub(r"[\s.‑]", "", x).strip().lower()
     return bool(canon(demande)) and canon(demande) == canon(rendu)
@@ -335,8 +380,22 @@ def _articles_de_loda(obj, acc):
     return acc
 
 
-def resoudre_loi(nom, article, date):
+def _ecarter_inexact(r):
+    """`r` : la réponse de `resoudre` ou de `resoudre_loi`.
+    Remplace un résultat trouvé mais INEXACT (la cascade a renvoyé un autre article que celui
+    demandé) par un refus : `trouve` False, `exact` False, et le `num` et le `lien` de l'article
+    le plus proche. Tout autre résultat est renvoyé tel quel."""
+    if r.get("trouve") and not r.get("exact", True):
+        return {"code": r.get("code"), "article": r.get("article"), "date": r.get("date_demandee"),
+                "trouve": False, "exact": False, "num": r.get("num"), "lien": r.get("lien"),
+                "brut": None}
+    return r
+
+
+def resoudre_loi(nom, article, date, exact=False):
     """L'article d'une LOI (ou ordonnance, ou décret), et non d'un code.
+    Avec exact=True, un article autre que celui demandé est écarté (voir `_ecarter_inexact`).
+    Si PISTE n'a pas répondu, la réponse porte `panne` (le message de l'incident).
 
     LE CONNECTEUR NE SAVAIT RÉSOUDRE QUE LES ARTICLES DE CODE. `resoudre` interroge le fonds
     CODE_DATE avec la facette NOM_CODE : par construction, un article de LOI n'y est jamais
@@ -351,17 +410,21 @@ def resoudre_loi(nom, article, date):
     m = _RE_NUM_LOI.search(nom or "")
     if not m:
         return {"code": nom, "article": article, "date": date, "trouve": False, "brut": None}
+    pannes_avant = DERNIERE_PANNE["nombre"]
     tid, titre = _legitext_loi(m.group(1).replace("‑", "-"))
     if not tid:
-        return {"code": nom, "article": article, "date": date, "trouve": False, "brut": None}
+        refus = {"code": nom, "article": article, "date": date, "trouve": False, "brut": None}
+        if DERNIERE_PANNE["nombre"] != pannes_avant:      # loi non identifiée faute de réponse
+            refus["panne"] = DERNIERE_PANNE["quoi"]
+        return refus
     ck = (tid, _ms(date))
     r = _TOC_CACHE.get(ck)
     if r is None:
         try:
             r = _post("/consult/legiPart", {"textId": tid, "date": _ms(date)})
         except Exception as e:
-            _panne(e)
-            return {"code": nom, "article": article, "date": date, "trouve": False, "brut": None}
+            return {"code": nom, "article": article, "date": date, "trouve": False, "brut": None,
+                    "panne": _panne(e)}
         if len(_TOC_CACHE) > 40:
             _TOC_CACHE.clear()
         _TOC_CACHE[ck] = r
@@ -378,28 +441,35 @@ def resoudre_loi(nom, article, date):
             # relevée par le rapporteur sur les articles 55-1 à 55-6 de la loi n° 2004-575. On
             # compare donc le numéro rendu au numéro demandé, comme le fait déjà `resoudre` pour
             # les codes, et l'appelant écarte ce qui n'est pas exact.
-            exact = _meme_article(article, a.get("num"))
-            return {
+            est_exact = _meme_article(article, a.get("num"))
+            r = {
                 "code": titre or nom, "article": article, "date_demandee": date, "trouve": True,
-                "exact": exact, "id": aid, "num": a.get("num"),
+                "exact": est_exact, "id": aid, "num": a.get("num"),
                 "alineas": alineas_de_html(html),
                 "texte": re.sub(r"<[^>]+>", " ", html).strip(),
-                "version_debut": _iso(a.get("dateDebut")), "version_fin": _iso(a.get("dateFin")),
+                "version_debut": _iso(a.get("dateDebut")), "version_fin": _iso_fin(a.get("dateFin")),
                 "lien": ("https://www.legifrance.gouv.fr/loda/article_lc/%s" % aid) if aid
                         else ("https://www.legifrance.gouv.fr/loda/id/%s" % tid),
             }
+            return _ecarter_inexact(r) if exact else r
     return {"code": nom, "article": article, "date": date, "trouve": False, "brut": None}
 
 
-def resoudre(code, article, date):
+def resoudre(code, article, date, exact=False):
     """Retourne l'article de <code> portant le n° <article>, dans sa version au <date>.
-    Tolère les alias de codes (CESEDA, CGI, LPF...) et les suffixes d'alinéa (« 8° »).
+    Tolère les alias de codes (CESEDA, CGI, LPF...), le mot « article » ou « art. » devant le
+    numéro et les suffixes d'alinéa (« 8° »). `version_fin` vaut None pour une version sans
+    terme, c'est-à-dire encore en vigueur (voir `_iso_fin`).
+
+    Par défaut, un article autre que celui demandé, renvoyé par la cascade de `_art_candidates`,
+    est renvoyé avec `exact` False ; c'est à l'appelant de l'écarter ou de le retenir (CGI :
+    « 158-5-a » -> article 158). Avec exact=True, il est écarté ici (voir `_ecarter_inexact`).
 
     Si le texte visé n'est pas un code mais une LOI, la recherche est aiguillée vers le fonds
     LODA : les deux fonds sont distincts, et chercher un article de loi dans CODE_DATE ne rend
     jamais rien."""
     if not code_connu(code) and _RE_NUM_LOI.search(code or ""):
-        return resoudre_loi(code, article, date)
+        return resoudre_loi(code, article, date, exact=exact)
     code = _canon_code(code)
     for num in _art_candidates(article):
         payload = {"recherche": {
@@ -420,10 +490,10 @@ def resoudre(code, article, date):
         # sans le dire, et le rapporteur cliquait sur un lien pointant vers un AUTRE article — le
         # cas se présente à chaque fois qu'un projet CRÉE des articles. On compare donc le numéro
         # rendu au numéro demandé, et l'écart est signalé par `exact`.
-        exact = _meme_article(article, art.get("num"))
-        return {
+        est_exact = _meme_article(article, art.get("num"))
+        r = {
             "code": code, "article": article, "date_demandee": date, "trouve": True,
-            "exact": exact,
+            "exact": est_exact,
             "id": art.get("id") or ids[0],
             "num": art.get("num"),
             # LES ALINÉAS, pris de `texteHtml` : c'est la seule forme qui les porte. `texte` reste
@@ -432,26 +502,11 @@ def resoudre(code, article, date):
                 [(art.get("texte") or "").strip()] if (art.get("texte") or "").strip() else []),
             "texte": (art.get("texte") or "").strip(),
             "version_debut": _iso(art.get("dateDebut")),
-            "version_fin": _iso(art.get("dateFin")),
+            "version_fin": _iso_fin(art.get("dateFin")),
             "lien": f"https://www.legifrance.gouv.fr/codes/article_lc/{art.get('id') or ids[0]}",
         }
+        return _ecarter_inexact(r) if exact else r
     return {"code": code, "article": article, "date": date, "trouve": False, "brut": None}
-
-if __name__ == "__main__":
-    import sys
-    code = sys.argv[1] if len(sys.argv) > 1 else "Code de l'environnement"
-    article = sys.argv[2] if len(sys.argv) > 2 else "R. 122-5"
-    date = sys.argv[3] if len(sys.argv) > 3 else "2016-07-08"
-    try:
-        r = resoudre(code, article, date)
-    except Exception as e:
-        print("ERREUR:", e); sys.exit(1)
-    if not r["trouve"]:
-        print("Article non trouvé. Réponse brute (début):", json.dumps(r["brut"], ensure_ascii=False)[:600]); sys.exit(0)
-    print(f"{r['num']} — {code}")
-    print(f"Version en vigueur : {r['version_debut']} → {r['version_fin'] or '(en cours)'} (demandé au {date})")
-    print(f"Lien : {r['lien']}")
-    print("Texte (400 c.) :", r["texte"][:400].replace("\n", " "))
 
 
 # ---------- jurisprudence constitutionnelle (fonds CONSTIT) ----------
@@ -556,7 +611,10 @@ def chercher_termes(termes, k=5, fond="CODE_ETAT"):
     question entière rendait du bruit (« Article 41 DE », « 6° : »), 2 sources sur 70.
     Retour : liste de {reference, titre, extrait, lien, fond}, la référence portant le
     NOM DU TEXTE (« Code de l'énergie, article L132-2 »), sans quoi deux articles L132-2
-    de deux codes sont indiscernables."""
+    de deux codes sont indiscernables.
+    `termes` : une liste de termes, ou une chaîne qui les contient tous."""
+    if isinstance(termes, str):
+        termes = [termes]
     valeur = " ".join(t for t in (termes or []) if t).strip()
     if not valeur:
         return []
@@ -630,7 +688,8 @@ def _legitext_code(code):
         "pageNumber": 1, "pageSize": 5, "operateur": "ET", "typePagination": "DEFAUT"}, "fond": "CODE_DATE"}
     try:
         js = _post("/search", payload)
-    except Exception:
+    except Exception as e:
+        _panne(e)          # ne pas confondre « rien trouvé » et « je n'ai pas pu chercher »
         return None
     ids = _find_any_id(js, ["LEGITEXT"])
     return re.sub(r"_.*", "", ids[0]) if ids else None
@@ -725,7 +784,7 @@ def resoudre_subdivision(parent_kind, parent_key, chemin, date=None):
     if not chemin:
         return {"trouve": False}
     date = date or datetime.datetime.now().strftime("%Y-%m-%d")
-    _av = DERNIERE_PANNE.get("quand")
+    _av = DERNIERE_PANNE.get("nombre")
     if parent_kind == "code":
         tid = _legitext_code(parent_key); base = "codes"
     else:
@@ -733,7 +792,7 @@ def resoudre_subdivision(parent_kind, parent_key, chemin, date=None):
     if not tid:
         # Le texte n'a pas été identifié : est-ce parce qu'il n'existe pas, ou parce que la
         # recherche a échoué ? On le dit, au lieu de laisser croire à une absence.
-        if DERNIERE_PANNE.get("quand") != _av:
+        if DERNIERE_PANNE.get("nombre") != _av:
             return {"trouve": False, "panne": DERNIERE_PANNE.get("quoi")}
         return {"trouve": False}
     # LA TABLE DES MATIÈRES D'UN CODE NE SE TÉLÉCHARGE QU'UNE FOIS.
@@ -788,18 +847,31 @@ def historique_article(code, article, date=None):
     """HISTORIQUE des versions d'un article de code OU DE LOI : chaque version (dates, état) et le
     TEXTE qui l'a créée ou modifiée (intitulé, nature, date, lien Légifrance vérifié). Source :
     PISTE /consult/getArticle (champs articleVersions + lienModifications). Un texte désigné par
-    son numéro (« loi n° 78-17 ») passe par le fonds LODA, comme `resoudre_loi`."""
+    son numéro (« loi n° 78-17 ») passe par le fonds LODA, comme `resoudre_loi`.
+    Seul l'article demandé est retenu : si la cascade en renvoie un autre, la réponse porte `trouve`
+    False, `exact` False, et le `num` et le `lien` de l'article le plus proche.
+    Si PISTE n'a pas répondu, la réponse porte `panne` (le message de l'incident) ; une version
+    dont le texte modificateur n'a pu être lu garde `modif` à None."""
     d = date or datetime.date.today().strftime("%Y-%m-%d")
-    r = resoudre_loi(code, article, d) if _RE_NUM_LOI.search(code or "") else resoudre(code, article, d)
+    if _RE_NUM_LOI.search(code or ""):
+        r = resoudre_loi(code, article, d, exact=True)
+    else:
+        r = resoudre(code, article, d, exact=True)
     if not r.get("trouve") or not r.get("id"):
-        return {"trouve": False}
+        refus = {"trouve": False}
+        if r.get("exact") is False:
+            refus.update(exact=False, num=r.get("num"), lien=r.get("lien"))
+        if r.get("panne"):
+            refus["panne"] = r["panne"]
+        return refus
     est_loi = "loda" in (r.get("lien") or "")
     try:
         art = (_post("/consult/getArticle", {"id": r["id"]}) or {}).get("article") or {}
-    except Exception:
-        return {"trouve": False}
+    except Exception as e:
+        return {"trouve": False, "panne": _panne(e)}
     versions = art.get("articleVersions") or []
     out = []
+    panne = None
     for v in versions:
         vid = v.get("id")
         modif = None
@@ -813,17 +885,21 @@ def historique_article(code, article, date=None):
                          "nature": s.get("natureText"), "sens": s.get("linkType"),
                          "date": s.get("datePubliTexte") or s.get("dateSignaTexte"),
                          "lien": _lien_texte(s.get("textCid"))}
-        except Exception:
-            pass
+        except Exception as e:
+            panne = _panne(e)
         out.append({"version": v.get("version"), "debut": _iso(v.get("dateDebut")),
-                    "fin": _iso(v.get("dateFin")), "etat": v.get("etat"),
+                    "fin": _iso_fin(v.get("dateFin")), "etat": v.get("etat"),
                     "lien_version": ("https://www.legifrance.gouv.fr/%s/article_lc/%s"
                                      % ("loda" if est_loi else "codes", vid)) if vid else None,
                     "modif": modif})
     out.sort(key=lambda x: x.get("debut") or "")
-    return {"trouve": True, "code": r.get("code") or code, "article": r.get("num") or article, "cid": art.get("cid"),
-            "lien": r.get("lien"), "texte_actuel": re.sub(r"<[^>]+>", " ", (art.get("texte") or ""))[:900].strip(),
-            "versions": out}
+    reponse = {"trouve": True, "code": r.get("code") or code, "article": r.get("num") or article,
+               "cid": art.get("cid"), "lien": r.get("lien"),
+               "texte_actuel": re.sub(r"<[^>]+>", " ", (art.get("texte") or ""))[:900].strip(),
+               "versions": out}
+    if panne:
+        reponse["panne"] = panne
+    return reponse
 
 
 # ==================================================================================================
@@ -869,3 +945,23 @@ if _CD is not None:
     resoudre = _avec_cache_disque("lf_resoudre", resoudre, 2)
     resoudre_loi = _avec_cache_disque("lf_resoudre_loi", resoudre_loi, 2)
     resoudre_subdivision = _avec_cache_disque("lf_resoudre_subdivision", resoudre_subdivision, 3)
+
+
+# Démonstration, exécutée seulement au lancement direct (`python legifrance.py [code] [article] [date]`).
+# À GARDER EN FIN DE FICHIER : Python exécute le fichier de haut en bas, et une fonction définie plus
+# bas n'existerait pas encore au moment de la démonstration (vérifié par test_legifrance.py).
+if __name__ == "__main__":
+    import sys
+    code = sys.argv[1] if len(sys.argv) > 1 else "Code de l'environnement"
+    article = sys.argv[2] if len(sys.argv) > 2 else "R. 122-5"
+    date = sys.argv[3] if len(sys.argv) > 3 else "2016-07-08"
+    try:
+        r = resoudre(code, article, date)
+    except Exception as e:
+        print("ERREUR:", e); sys.exit(1)
+    if not r["trouve"]:
+        print("Article non trouvé. Réponse brute (début):", json.dumps(r["brut"], ensure_ascii=False)[:600]); sys.exit(0)
+    print(f"{r['num']} — {code}")
+    print(f"Version en vigueur : {r['version_debut']} → {r['version_fin'] or '(en cours)'} (demandé au {date})")
+    print(f"Lien : {r['lien']}")
+    print("Texte (400 c.) :", r["texte"][:400].replace("\n", " "))
