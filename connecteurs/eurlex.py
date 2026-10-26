@@ -3,9 +3,12 @@
 
 Recherche par mots-clés dans les titres français, restreinte par défaut à la
 législation (secteur CELEX 3) et à la jurisprudence de l'Union (secteur 6).
-Aucune authentification. Renvoie référence, type, date et lien EUR-Lex.
+Aucune authentification. Renvoie référence, type, date et lien EUR-Lex, et l'état
+de chaque acte (en vigueur, fin de validité, dernière version consolidée,
+rectificatifs). `resoudre` retrouve un acte ou une affaire par son numéro
+(« directive 2011/92/UE », « C-461/17 », numéro CELEX).
 """
-import re, urllib.request, urllib.parse, json
+import datetime, re, urllib.request, urllib.parse, json
 
 ENDPOINT = "https://publications.europa.eu/webapi/rdf/sparql"
 _FRA = "http://publications.europa.eu/resource/authority/language/FRA"
@@ -155,19 +158,43 @@ def _phares(question):
     return out
 
 
-def chercher(question, k=6, secteurs=("3", "6"), timeout=60):
+def _executer(requete, timeout):
+    """Envoie la requête SPARQL au point d'accès et renvoie [(celex, titre, date)], un par numéro
+    CELEX, dans l'ordre du point d'accès. Une panne lève l'erreur."""
+    url = ENDPOINT + "?" + urllib.parse.urlencode({"query": requete, "format": "application/sparql-results+json"})
+    req = urllib.request.Request(url, headers={"Accept": "application/sparql-results+json",
+                                               "User-Agent": "Mozilla/5.0"})
+    js = json.loads(urllib.request.urlopen(req, timeout=timeout).read())
+    lignes, vus = [], set()
+    for b in js.get("results", {}).get("bindings", []):
+        celex = b.get("celex", {}).get("value", "")
+        if celex in vus:
+            continue
+        vus.add(celex)
+        lignes.append((celex, b.get("title", {}).get("value", ""),
+                       (b.get("date", {}).get("value", "") or "")[:10]))
+    return lignes
+
+
+def _resultat(celex, titre, date):
+    """Un document tel que le renvoient les fonctions de recherche."""
+    return {"reference": f"{_type_celex(celex)} — CELEX {celex}", "celex": celex,
+            "type": _type_celex(celex), "titre": titre[:220], "date": date, "lien": _lien(celex)}
+
+
+def chercher(question, k=6, secteurs=("3", "6"), timeout=60, etat=True):
     """Recherche EUR-Lex. Réponse directe aux actes « phares » détectés par sigle (DSA, DMA,
     AI Act…), complétée par une recherche par mots-clés dans les titres FR : un titre est retenu
     s'il contient l'un des mots (OU) ; les titres sont classés par nombre de mots présents, puis
     du plus récent au plus ancien, et ceux qui n'en contiennent qu'un sont écartés dès qu'un
     autre en contient au moins deux. Renvoie une liste de {reference, celex, type, titre, date,
-    lien}.
+    lien}, complétée par l'état de chaque acte si `etat` est vrai (voir `etat_des_actes`).
     Si le point d'accès ne répond pas (réseau, délai dépassé, erreur HTTP), l'erreur remonte, comme
     dans les fonctions de recherche de legifrance.py : une panne n'est pas un résultat vide."""
     phares = _phares(question)
     mots = _mots(question)
     if not mots:
-        return phares[:k]
+        return _avec_etat(phares[:k], timeout) if etat else phares[:k]
     ors = " || ".join(f'CONTAINS(LCASE(STR(?title)), "{m}")' for m in mots)
     filtres = f"  FILTER({ors})"
     sect = " || ".join(f'STRSTARTS(STR(?celex),"{s}")' for s in secteurs)
@@ -181,20 +208,8 @@ SELECT DISTINCT ?celex ?title ?date WHERE {{
 {filtres}
   FILTER({sect})
 }} LIMIT {max(k*8, 40)}'''
-    url = ENDPOINT + "?" + urllib.parse.urlencode({"query": q, "format": "application/sparql-results+json"})
-    req = urllib.request.Request(url, headers={"Accept": "application/sparql-results+json",
-                                               "User-Agent": "Mozilla/5.0"})
-    js = json.loads(urllib.request.urlopen(req, timeout=timeout).read())
-    cand, seen = [], set()
-    for b in js.get("results", {}).get("bindings", []):
-        celex = b.get("celex", {}).get("value", "")
-        if celex in seen:
-            continue
-        seen.add(celex)
-        title = b.get("title", {}).get("value", "")
-        date = (b.get("date", {}).get("value", "") or "")[:10]
-        score = sum(1 for m in mots if m in title.lower())      # nombre de termes de la requête présents
-        cand.append((score, date, celex, title))
+    cand = [(sum(1 for m in mots if m in title.lower()), date, celex, title)   # nombre de termes présents
+            for celex, title, date in _executer(q, timeout)]
     cand = [c for c in cand if c[0] > 0]                         # au moins un terme de la requête présent
     if cand:
         mx = max(c[0] for c in cand)
@@ -206,10 +221,211 @@ SELECT DISTINCT ?celex ?title ?date WHERE {{
     for score, date, celex, title in cand[:k]:
         if celex in dejacelex:
             continue
-        out.append({"reference": f"{_type_celex(celex)} — CELEX {celex}",
-                    "celex": celex, "type": _type_celex(celex),
-                    "titre": title[:220], "date": date, "lien": _lien(celex)})
-    return out[:max(k, len(phares))]
+        out.append(_resultat(celex, title, date))
+    out = out[:max(k, len(phares))]
+    return _avec_etat(out, timeout) if etat else out
+
+
+# Date de fin de validité que Cellar donne aux actes sans terme.
+_SANS_FIN = "9999-12-31"
+
+
+def _valeurs_celex(celex):
+    """Numéros CELEX pour une clause VALUES. Cellar les enregistre comme littéraux xsd:string :
+    écrits ainsi, ils sont trouvés par l'index (un dixième de seconde), alors qu'un filtre sur
+    STR(?celex) parcourt tous les numéros (plusieurs secondes) et qu'un littéral sans type ne
+    trouve rien."""
+    return " ".join(f'"{c}"^^<http://www.w3.org/2001/XMLSchema#string>' for c in celex)
+
+
+def etat_des_actes(celex, timeout=60):
+    """État de chaque acte, en une seule requête : {celex: {en_vigueur, fin_de_validite,
+    version_consolidee, rectificatifs}}.
+
+    - en_vigueur : True ou False selon Cellar, None si Cellar n'en dit rien (jurisprudence…) ;
+    - fin_de_validite : date AAAA-MM-JJ, None si l'acte est sans terme ;
+    - version_consolidee : la plus récente, {celex, date, lien}, None s'il n'y en a pas. Une
+      version consolidée est un outil de documentation : seul le texte publié au Journal
+      officiel fait foi ;
+    - rectificatifs : numéros CELEX de tous les rectificatifs de l'acte, liste complète.
+
+    Cellar rattache à un acte, outre ses propres versions consolidées, celles d'actes qu'il
+    modifie ou abroge : seules comptent celles dont le numéro reprend celui de l'acte (secteur 0,
+    « 02010L0075-20240804 » pour 32010L0075). Une panne lève l'erreur."""
+    celex = [c for c in dict.fromkeys(celex) if c and re.fullmatch(r"[0-9A-Z()_.-]+", c)]
+    etats = {c: {"en_vigueur": None, "fin_de_validite": None, "version_consolidee": None,
+                 "rectificatifs": []} for c in celex}
+    if not celex:
+        return etats
+    q = f'''PREFIX cdm: <http://publications.europa.eu/ontology/cdm#>
+SELECT ?bc ?genre ?v ?c ?d WHERE {{
+  VALUES ?bc {{ {_valeurs_celex(celex)} }}
+  ?base cdm:resource_legal_id_celex ?bc .
+  {{ BIND("etat" AS ?genre)
+     OPTIONAL {{ ?base cdm:resource_legal_in-force ?v }}
+     OPTIONAL {{ ?base cdm:resource_legal_date_end-of-validity ?d }} }}
+  UNION
+  {{ BIND("consolidee" AS ?genre)
+     ?x cdm:act_consolidated_consolidates_resource_legal ?base .
+     ?x cdm:resource_legal_id_celex ?c }}
+  UNION
+  {{ BIND("rectificatif" AS ?genre)
+     ?x cdm:resource_legal_corrects_resource_legal ?base .
+     ?x cdm:resource_legal_id_celex ?c }}
+}}'''
+    url = ENDPOINT + "?" + urllib.parse.urlencode({"query": q, "format": "application/sparql-results+json"})
+    req = urllib.request.Request(url, headers={"Accept": "application/sparql-results+json",
+                                               "User-Agent": "Mozilla/5.0"})
+    js = json.loads(urllib.request.urlopen(req, timeout=timeout).read())
+    for b in js.get("results", {}).get("bindings", []):
+        val = {k: v.get("value", "") for k, v in b.items()}
+        e = etats.get(val.get("bc"))
+        if e is None:
+            continue
+        genre = val.get("genre")
+        if genre == "etat":
+            if val.get("v"):
+                e["en_vigueur"] = val["v"].lower() in ("1", "true")
+            fin = val.get("d", "")[:10]
+            if fin and fin != _SANS_FIN:
+                e["fin_de_validite"] = fin
+        elif genre == "rectificatif" and val.get("c") and val["c"] not in e["rectificatifs"]:
+            e["rectificatifs"].append(val["c"])
+        elif genre == "consolidee":
+            m = re.fullmatch(re.escape("0" + val["bc"][1:]) + r"-(\d{4})(\d{2})(\d{2})", val.get("c", ""))
+            if m:
+                date = "-".join(m.groups())
+                if not e["version_consolidee"] or date > e["version_consolidee"]["date"]:
+                    e["version_consolidee"] = {"celex": val["c"], "date": date, "lien": _lien(val["c"])}
+    for e in etats.values():
+        e["rectificatifs"].sort()
+    return etats
+
+
+def _avec_etat(resultats, timeout):
+    """Ajoute à chaque résultat l'état de l'acte (`etat_des_actes`), en une requête. Les
+    rectificatifs déjà rattachés au résultat sont conservés."""
+    if not resultats:
+        return resultats
+    etats = etat_des_actes([r["celex"] for r in resultats], timeout)
+    for r in resultats:
+        e = dict(etats.get(r["celex"]) or {})
+        e["rectificatifs"] = sorted(set(r.get("rectificatifs", [])) | set(e.get("rectificatifs", [])))
+        r.update(e)
+    return resultats
+
+
+
+# --- Résolution d'une référence : numéro d'acte, numéro d'affaire, numéro CELEX ----------------
+
+# Type d'acte -> lettre du numéro CELEX (secteur 3).
+_LETTRE_ACTE = {"règlement": "R", "directive": "L", "décision": "D", "décision-cadre": "F",
+                "recommandation": "H"}
+_RE_ACTE = re.compile(
+    r"\b(règlement|directive|décision-cadre|décision|recommandation)\b"
+    r"[^0-9/]{0,60}?(n[°º]\s*|no\s+)?(\d{1,4})\s*/\s*(\d{1,4})\b", re.IGNORECASE)
+# Affaire : C- (Cour de justice), T- (Tribunal), F- (Tribunal de la fonction publique).
+_RE_AFFAIRE = re.compile(r"\b([CTF])\s*-\s*(\d{1,4})\s*/\s*(\d{2}|\d{4})\b")
+_DOCUMENTS_AFFAIRE = {"C": ("CJ", "CC", "CO"), "T": ("TJ", "TO"), "F": ("FJ", "FO")}
+_RE_CELEX = re.compile(r"[0-9]\d{4}[A-Z]{1,2}\d{4}(?:\(\d{2}\))?|0\d{4}[A-Z]\d{4}-\d{8}")
+_ANNEE_COURANTE = datetime.date.today().year
+
+
+def _annee(texte):
+    """Année écrite sur deux chiffres (numérotation antérieure à 1999) ou quatre."""
+    return 1900 + int(texte) if len(texte) == 2 else int(texte)
+
+
+def _lire_reference(reference):
+    """Référence -> (genre, numéros CELEX à chercher, numéro attendu dans le titre).
+
+    genre : "celex", "acte" ou "affaire" ; None si la référence n'est pas reconnue. Pour un acte,
+    le premier numéro est celui du type cité, les suivants ceux des autres types (même année,
+    même numéro), pour signaler une référence qui se trompe de type.
+
+    Règles de numérotation : depuis 2015, tous les actes sont numérotés (UE) AAAA/N. Avant,
+    directives, recommandations et décisions-cadres portent l'année en premier (92/43/CEE,
+    2008/98/CE), les règlements le numéro en premier (n° 1013/2006), les décisions l'année en
+    premier, sauf celles qui sont numérotées « n° » (décision n° 1386/2013/UE)."""
+    texte = re.sub(r"[‐-―−]", "-", reference or "").strip()
+    if _RE_CELEX.fullmatch(texte.upper()):
+        return "celex", [texte.upper()], None
+    m = _RE_AFFAIRE.search(texte)
+    if m:
+        cour, numero, an = m.group(1), int(m.group(2)), m.group(3)
+        annee = (1900 if int(an) >= 54 else 2000) + int(an) if len(an) == 2 else int(an)
+        return "affaire", [f"6{annee}{d}{numero:04d}" for d in _DOCUMENTS_AFFAIRE[cour]], None
+    m = _RE_ACTE.search(texte)
+    if not m:
+        return None, [], None
+    type_acte, numero_d_abord = m.group(1).lower(), bool(m.group(2))
+    a, b = m.group(3), m.group(4)
+    if type_acte == "règlement":
+        annee_d_abord = len(a) == 4 and 2015 <= int(a) <= _ANNEE_COURANTE + 1
+    elif type_acte == "décision":
+        annee_d_abord = not numero_d_abord
+    else:
+        annee_d_abord = True
+    annee, numero = (_annee(a), int(b)) if annee_d_abord else (_annee(b), int(a))
+    if numero > 9999:
+        return None, [], None
+    lettres = [_LETTRE_ACTE[type_acte]] + [l for l in "RLD" if l != _LETTRE_ACTE[type_acte]]
+    return "acte", [f"3{annee}{l}{numero:04d}" for l in lettres], (annee, numero)
+
+
+def _titre_reprend(titre, annee, numero):
+    """Le titre cite-t-il le numéro (année et numéro, dans un ordre ou l'autre) ?"""
+    an = rf"(?:{annee}|{annee % 100:02d})"
+    num = rf"0*{numero}"
+    return bool(re.search(rf"(?<!\d){an}\s*/\s*{num}(?!\d)|(?<!\d){num}\s*/\s*{an}(?!\d)", titre))
+
+
+def resoudre(reference, etat=True, timeout=60):
+    """Retrouve dans EUR-Lex l'acte ou l'affaire que désigne une référence, telle qu'on l'écrit :
+    « directive 2011/92/UE », « règlement (CE) n° 1013/2006 », « directive 92/43/CEE »,
+    « décision n° 1386/2013/UE », « C-461/17 », ou un numéro CELEX.
+
+    Le numéro CELEX est déduit de la référence, puis son existence vérifiée dans Cellar. Renvoie
+    {demande, trouve, resultats, autres, message} :
+    - trouve : l'acte ou l'affaire existe ;
+    - resultats : l'acte, ou les documents de l'affaire (arrêt, conclusions, ordonnances), avec
+      les champs de `chercher` et, si `etat` est vrai, leur état (voir `etat_des_actes`) ;
+    - autres : seulement si l'acte est introuvable sous le type cité, les actes de même année et
+      de même numéro sous un autre type (« directive 2016/679 » : le règlement 2016/679 existe) ;
+    - message : ce qui ne va pas (référence non reconnue, introuvable, titre qui ne reprend pas
+      le numéro cité), sinon None.
+    Si le point d'accès ne répond pas, l'erreur remonte."""
+    genre, candidats, numero_attendu = _lire_reference(reference)
+    reponse = {"demande": reference, "trouve": False, "resultats": [], "autres": [], "message": None}
+    if not genre:
+        reponse["message"] = "Référence non reconnue : ni numéro d'acte, ni numéro d'affaire, ni numéro CELEX."
+        return reponse
+    q = f"""PREFIX cdm: <http://publications.europa.eu/ontology/cdm#>
+SELECT DISTINCT ?celex ?title ?date WHERE {{
+  VALUES ?celex {{ {_valeurs_celex(candidats)} }}
+  ?work cdm:resource_legal_id_celex ?celex .
+  ?exp cdm:expression_belongs_to_work ?work ;
+       cdm:expression_uses_language <{_FRA}> ;
+       cdm:expression_title ?title .
+  OPTIONAL {{ ?work cdm:work_date_document ?date }}
+}}"""
+    trouves = {celex: _resultat(celex, titre, date) for celex, titre, date in _executer(q, timeout)}
+    if genre == "acte":
+        principal = trouves.get(candidats[0])
+        reponse["resultats"] = [principal] if principal else []
+        if not principal:
+            reponse["autres"] = [trouves[c] for c in candidats[1:] if c in trouves]
+    else:
+        reponse["resultats"] = [trouves[c] for c in candidats if c in trouves]
+    reponse["trouve"] = bool(reponse["resultats"])
+    if not reponse["trouve"]:
+        reponse["message"] = "Introuvable dans EUR-Lex" + (
+            " sous ce type ; un acte de même numéro existe sous un autre type." if reponse["autres"] else ".")
+    elif numero_attendu and not _titre_reprend(reponse["resultats"][0]["titre"], *numero_attendu):
+        reponse["message"] = "Le titre de l'acte trouvé ne reprend pas le numéro cité : à vérifier."
+    if etat:
+        _avec_etat(reponse["resultats"] + reponse["autres"], timeout)
+    return reponse
 
 
 if __name__ == "__main__":
