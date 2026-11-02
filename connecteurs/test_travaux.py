@@ -411,6 +411,54 @@ class PlusieursTextes(unittest.TestCase):
         self.assertEqual(r["message"], "Texte créateur de la version non identifié.")
 
 
+class ArticleCodifie(unittest.TestCase):
+    """Version insérée dans le code par codification : les textes sont ceux de la disposition
+    codifiée, la réponse porte `codification` et un avertissement. PISTE simulé ; identifiants
+    fictifs."""
+
+    CODIF = {"linkType": "CODIFICATION", "linkOrientation": "source", "textCid": "JORFTEXT000000000011",
+             "datePubliTexte": "2000-09-21", "textTitle": "Ordonnance fictive de codification",
+             "natureText": "ORDONNANCE"}
+    ARTICLE = {"id": "LEGIARTI000000000100", "dateDebut": 969487200000,
+               "lienModifications": [CODIF],
+               "lienConcordes": [{"linkType": "CONCORDE", "linkOrientation": "cible",
+                                  "articleId": "LEGIARTI000000000301", "textCid": "JORFTEXT000000000042",
+                                  "natureText": "LOI", "textTitle": "Loi fictive 83 - art. 1 (Ab)"}]}
+    ANCIEN = {"id": "LEGIARTI000000000301", "lienModifications": []}
+
+    def travaux(self, ancien_en_panne=False):
+        def faux_post(chemin, charge):
+            if chemin == "/consult/getArticle":
+                if charge["id"] == "LEGIARTI000000000301":
+                    if ancien_en_panne:
+                        raise RuntimeError("503 Service Unavailable")
+                    return {"article": self.ANCIEN}
+                return {"article": self.ARTICLE}
+            if chemin == "/consult/jorf":
+                n = charge["textCid"][-2:]
+                return {"nature": "LOI", "title": "Texte " + n, "prepWork": "<p>Travaux %s</p>" % n}
+            raise AssertionError("appel inattendu : " + chemin)
+        with mock.patch.object(travaux.legifrance, "resoudre", return_value=Pannes.TROUVE), \
+             mock.patch.object(travaux.legifrance, "_post", faux_post):
+            return travaux.travaux_pour_article("Code de l'environnement", "L. 123-2", "2001-01-01")
+
+    def test_disposition_d_origine(self):
+        r = self.travaux()
+        self.assertEqual(r["loi"]["cid"], "JORFTEXT000000000042")
+        self.assertEqual(r["travaux_preparatoires"], "Travaux 42")
+        self.assertEqual(r["codification"], {"codifie_par": ["Ordonnance fictive de codification"],
+                                             "issu_de": ["Loi fictive 83 - art. 1 (Ab)"]})
+        self.assertTrue(r["avertissement"].startswith(travaux._AVERTISSEMENT_ORIGINE))
+        self.assertNotIn("panne", r)
+
+    def test_panne_pendant_la_remontee(self):
+        r = self.travaux(ancien_en_panne=True)
+        self.assertTrue(r["trouve"])
+        self.assertEqual(r["loi"]["cid"], "JORFTEXT000000000011")
+        self.assertNotIn("codification", r)
+        self.assertIn("503", r["panne"])
+
+
 class Demonstration(unittest.TestCase):
     """Le lancement direct (`python travaux.py`) exécute la démonstration jusqu'au bout."""
 
