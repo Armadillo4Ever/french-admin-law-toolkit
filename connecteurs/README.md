@@ -89,18 +89,44 @@ travaux.travaux_pour_article("code de l'environnement", "L. 121-8", "2024-03-15"
 
 Le principe mérite d'être expliqué, parce qu'il n'est pas évident : on résout la
 version de l'article applicable à la date du litige, on identifie le texte qui a
-**créé** cette version (lien `CREE` de Légifrance), puis on récupère son dossier
-législatif et ses travaux préparatoires. Une disposition réglementaire (R. ou
-D.) n'a pas de travaux parlementaires : le module le dit plutôt que de chercher
-en vain.
+**produit** cette version (liens de modification de Légifrance), puis on récupère
+son dossier législatif et ses travaux préparatoires. Une disposition
+réglementaire (R. ou D.) n'a pas de travaux parlementaires : le module le dit
+plutôt que de chercher en vain.
+
+Légifrance cite parfois plusieurs textes pour une même version, sans dire lequel
+a produit la rédaction en cause. Le module ne les départage pas : il les renvoie
+tous dans `textes`, chacun avec ses travaux, avec un `avertissement`.
+
+La première version d'un article dans un code ne cite souvent que le texte qui
+l'y a inséré, par exemple l'ordonnance n° 2000-914 pour le code de
+l'environnement. Les travaux de ce texte n'apprennent rien sur l'intention du
+législateur quand la codification s'est faite à droit constant. Le module remonte
+donc à la disposition dont l'article est issu, que Légifrance indique (l'article
+L. 512-1 du code de l'environnement vient de l'article 3 de la loi n° 76-663), et
+renvoie les textes qui ont produit sa rédaction au jour de la codification. La
+réponse le signale par un champ `codification`, qui nomme le texte de
+codification et la disposition d'origine.
 
 **Le module renvoie des liens, pas le contenu des pièces.** Il donne l'exposé des
 motifs, la note de travaux préparatoires publiée au Journal officiel et la liste
 des pièces du dossier législatif (projet, rapports, débats, textes adoptés),
 chacune avec son lien. Le texte des rapports et des débats n'est pas récupéré :
-pour le citer, il faut ouvrir la pièce. Lorsque le texte créateur est une
+pour le citer, il faut ouvrir la pièce. Toutes les pièces sont renvoyées.
+Une loi qui ratifie des ordonnances est aussi rattachée à leurs dossiers : le
+module retient le dossier de la loi elle-même, et liste les autres dans
+`autres_dossiers`. Lorsque le texte créateur est une
 ordonnance, ou semble être une codification, la réponse porte un
 `avertissement` qui indique où chercher l'intention du législateur.
+
+Une ordonnance n'a pas de débats parlementaires. Pour elle, la réponse porte un
+champ `ordonnance` qui donne, quand Légifrance les indique, le rapport au
+Président de la République et la loi de ratification, pris dans le dossier de
+l'ordonnance, et la loi d'habilitation, cherchée parmi les lois que citent les
+visas (« Vu la loi n° …, notamment son article … »). Quand le rapport au
+Président désigne la loi d'habilitation, seule celle-ci est renvoyée
+(`habilitation`) ; sinon, les lois d'habilitation potentielles le sont toutes,
+sans être départagées (`habilitations_potentielles`).
 
 ## EUR-Lex
 

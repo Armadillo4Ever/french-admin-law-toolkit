@@ -91,19 +91,46 @@ travaux.travaux_pour_article("code de l'environnement", "L. 121-8", "2024-03-15"
 
 The principle deserves explanation, because it is not obvious: the version of
 the article applicable on the date of the dispute is resolved, the text that
-**created** that version is identified (Légifrance `CREE` link), then its
-legislative file and its preparatory works are retrieved. A regulatory
+**produced** that version is identified (Légifrance modification links), then
+its legislative file and its preparatory works are retrieved. A regulatory
 provision (R. or D.) has no parliamentary proceedings: the module says so rather
 than searching in vain.
+
+Légifrance sometimes cites several texts for the same version, without saying
+which one produced the wording at issue. The module does not choose between
+them: it returns them all in `textes`, each with its preparatory works, along
+with an `avertissement` (warning).
+
+The first version of an article in a code often cites only the text that
+inserted it there, for instance ordinance No. 2000-914 for the environmental
+code. That text's preparatory works say nothing of the legislature's intent when
+the codification was made without change of substance (*à droit constant*). The
+module therefore goes back to the provision the article comes from, which
+Légifrance indicates (article L. 512-1 of the environmental code comes from
+article 3 of Act No. 76-663), and returns the texts that produced its wording on
+the day of codification. The response says so in a `codification` field, which
+names the codifying text and the original provision.
 
 **The module returns links, not the content of the documents.** It provides the
 explanatory memorandum, the note on preparatory works published in the Journal
 officiel and the list of documents in the legislative file (bill, reports,
 debates, adopted texts), each with its link. The text of reports and debates is
-not retrieved: to quote it, the document must be opened. When the creating text
+not retrieved: to quote it, the document must be opened. All documents are
+returned. An act that ratifies ordinances is also attached to their files: the
+module keeps the act's own legislative file and lists the others in
+`autres_dossiers`. When the creating text
 is an ordinance (*ordonnance*), or appears to be a codification, the response
 carries an `avertissement` (warning) indicating where to look for the
 legislature's intent.
+
+An ordinance has no parliamentary debates. For one, the response carries an
+`ordonnance` field giving, when Légifrance indicates them, the report to the
+President of the Republic and the ratifying act, taken from the ordinance's
+legislative file, and the enabling act (*loi d'habilitation*), sought among the
+acts cited in the recitals (« Vu la loi n° …, notamment son article … »). When the report
+to the President names the enabling act, only that one is returned
+(`habilitation`); otherwise all potential ones are, unranked
+(`habilitations_potentielles`).
 
 ## EUR-Lex
 

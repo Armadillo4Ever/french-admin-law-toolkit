@@ -346,6 +346,300 @@ class TextesDecodes(unittest.TestCase):
                 self.assertEqual(len(r[champ].splitlines()), 2)
 
 
+class PlusieursTextes(unittest.TestCase):
+    """Les textes qui ont produit la version sont tous renvoyés, chacun avec ses travaux, sans
+    hiérarchie ; un lien de codification est écarté. PISTE simulé ; identifiants fictifs."""
+
+    def lien(self, type_, orientation, cid, date):
+        return {"linkType": type_, "linkOrientation": orientation, "textCid": cid,
+                "datePubliTexte": date, "textTitle": "Texte " + cid[-2:], "natureText": "LOI"}
+
+    def travaux(self, liens):
+        def faux_post(chemin, charge):
+            if chemin == "/consult/getArticle":
+                return {"article": {"lienModifications": liens}}
+            if chemin == "/consult/jorf":
+                n = charge["textCid"][-2:]
+                return {"nature": "LOI", "title": "Loi " + n, "prepWork": "<p>Travaux %s</p>" % n,
+                        "dossiersLegislatifs": [{"id": "JORFDOLE0000000000" + n}]}
+            if chemin == "/consult/dossierLegislatif":
+                n = charge["id"][-2:]
+                return {"dossierLegislatif": {"arborescence": {"niveaux": [{"libelle": "Sénat", "liens": [
+                    {"libelle": "Rapport " + n, "lien": "https://exemple.invalid/rapport" + n}]}]},
+                    "exposeMotif": "<p>Motifs %s</p>" % n}}
+            raise AssertionError("appel inattendu : " + chemin)
+        with mock.patch.object(travaux.legifrance, "resoudre", return_value=Pannes.TROUVE), \
+             mock.patch.object(travaux.legifrance, "_post", faux_post):
+            return travaux.travaux_pour_article("Code de l'environnement", "L. 123-2", "2016-09-01")
+
+    def test_un_texte_au_premier_niveau(self):
+        r = self.travaux([self.lien("CODIFICATION", "source", "JORFTEXT000000000011", "2000-09-21"),
+                          self.lien("MODIFICATION", "source", "JORFTEXT000000000013", "2003-07-31")])
+        self.assertEqual(len(r["textes"]), 1)
+        self.assertEqual(r["loi"]["cid"], "JORFTEXT000000000013")
+        self.assertEqual(r["travaux_preparatoires"], "Travaux 13")
+        self.assertEqual(r["expose_motif"], "Motifs 13")
+        self.assertEqual(r["textes"][0]["loi"], r["loi"])
+        self.assertEqual(r["ratione_temporis"], travaux._RATIONE_TEMPORIS)
+        self.assertNotIn("avertissement", r)
+
+    def test_plusieurs_textes_sans_hierarchie(self):
+        r = self.travaux([self.lien("MODIFIE", "cible", "JORFTEXT000000000017", "2016-08-09"),
+                          self.lien("MODIFIE", "cible", "JORFTEXT000000000016", "2016-08-05")])
+        self.assertTrue(r["trouve"])
+        self.assertEqual([t["loi"]["cid"] for t in r["textes"]],
+                         ["JORFTEXT000000000016", "JORFTEXT000000000017"])
+        self.assertEqual([t["travaux_preparatoires"] for t in r["textes"]], ["Travaux 16", "Travaux 17"])
+        self.assertEqual([t["pieces"][0]["libelle"] for t in r["textes"]], ["Rapport 16", "Rapport 17"])
+        for champ in ("loi", "lien_texte", "lien_dossier", "travaux_preparatoires", "pieces", "expose_motif"):
+            self.assertNotIn(champ, r)
+        self.assertEqual(r["avertissement"], travaux._AVERTISSEMENT_PLUSIEURS)
+        self.assertEqual(r["ratione_temporis"], travaux._RATIONE_TEMPORIS_PLUSIEURS)
+
+    def test_avertissement_propre_a_chaque_texte(self):
+        liens = [self.lien("MODIFIE", "cible", "JORFTEXT000000000016", "2016-08-05"),
+                 self.lien("MODIFIE", "cible", "JORFTEXT000000000017", "2016-08-09")]
+        with mock.patch.object(travaux, "_avertissements",
+                               lambda nature, titre: [titre] if titre == "Loi 16" else []):
+            r = self.travaux(liens)
+        self.assertEqual(r["textes"][0]["avertissement"], "Loi 16")
+        self.assertNotIn("avertissement", r["textes"][1])
+
+    def test_aucun_texte(self):
+        r = self.travaux([])
+        self.assertFalse(r["trouve"])
+        self.assertEqual(r["message"], "Texte créateur de la version non identifié.")
+
+
+class ArticleCodifie(unittest.TestCase):
+    """Version insérée dans le code par codification : les textes sont ceux de la disposition
+    codifiée, la réponse porte `codification` et un avertissement. PISTE simulé ; identifiants
+    fictifs."""
+
+    CODIF = {"linkType": "CODIFICATION", "linkOrientation": "source", "textCid": "JORFTEXT000000000011",
+             "datePubliTexte": "2000-09-21", "textTitle": "Ordonnance fictive de codification",
+             "natureText": "ORDONNANCE"}
+    ARTICLE = {"id": "LEGIARTI000000000100", "dateDebut": 969487200000,
+               "lienModifications": [CODIF],
+               "lienConcordes": [{"linkType": "CONCORDE", "linkOrientation": "cible",
+                                  "articleId": "LEGIARTI000000000301", "textCid": "JORFTEXT000000000042",
+                                  "natureText": "LOI", "textTitle": "Loi fictive 83 - art. 1 (Ab)"}]}
+    ANCIEN = {"id": "LEGIARTI000000000301", "lienModifications": []}
+
+    def travaux(self, ancien_en_panne=False):
+        def faux_post(chemin, charge):
+            if chemin == "/consult/getArticle":
+                if charge["id"] == "LEGIARTI000000000301":
+                    if ancien_en_panne:
+                        raise RuntimeError("503 Service Unavailable")
+                    return {"article": self.ANCIEN}
+                return {"article": self.ARTICLE}
+            if chemin == "/consult/jorf":
+                n = charge["textCid"][-2:]
+                return {"nature": "LOI", "title": "Texte " + n, "prepWork": "<p>Travaux %s</p>" % n}
+            raise AssertionError("appel inattendu : " + chemin)
+        with mock.patch.object(travaux.legifrance, "resoudre", return_value=Pannes.TROUVE), \
+             mock.patch.object(travaux.legifrance, "_post", faux_post):
+            return travaux.travaux_pour_article("Code de l'environnement", "L. 123-2", "2001-01-01")
+
+    def test_disposition_d_origine(self):
+        r = self.travaux()
+        self.assertEqual(r["loi"]["cid"], "JORFTEXT000000000042")
+        self.assertEqual(r["travaux_preparatoires"], "Travaux 42")
+        self.assertEqual(r["codification"], {"codifie_par": ["Ordonnance fictive de codification"],
+                                             "issu_de": ["Loi fictive 83 - art. 1 (Ab)"]})
+        self.assertTrue(r["avertissement"].startswith(travaux._AVERTISSEMENT_ORIGINE))
+        self.assertNotIn("panne", r)
+
+    def test_panne_pendant_la_remontee(self):
+        r = self.travaux(ancien_en_panne=True)
+        self.assertTrue(r["trouve"])
+        self.assertEqual(r["loi"]["cid"], "JORFTEXT000000000011")
+        self.assertNotIn("codification", r)
+        self.assertIn("503", r["panne"])
+
+
+class DossierDuTexte(unittest.TestCase):
+    """Le dossier législatif propre au texte, et non le premier rattaché ; toutes les pièces.
+    Forme des réponses constatée le 02/11/2026 ; identifiants et intitulés fictifs."""
+
+    LOI = "LOI n° 2016-9999 du 8 août 2016 pour l'exemple (1)"
+    DOSSIERS = [{"id": "JORFDOLE000000000071", "titre": "Ordonnance n° 2012-9999 du 5 janvier 2012 fictive"},
+                {"id": "JORFDOLE000000000072", "titre": "LOI n° 2016-9999 du 8 août 2016 pour l'exemple"},
+                {"id": "JORFDOLE000000000073", "titre": "Ordonnance n° 2015-9999 du 23 septembre 2015 fictive"}]
+
+    def test_par_numero(self):
+        propre, autres = travaux._dossier_du_texte(self.DOSSIERS, self.LOI)
+        self.assertEqual(propre["id"], "JORFDOLE000000000072")
+        self.assertEqual([d["id"] for d in autres], ["JORFDOLE000000000071", "JORFDOLE000000000073"])
+
+    def test_par_intitule_sans_numero(self):
+        dossiers = [{"id": "JORFDOLE000000000074", "titre": "Autre texte"},
+                    {"id": "JORFDOLE000000000075", "titre": "Loi relative à  l'Exemple"}]
+        propre, autres = travaux._dossier_du_texte(dossiers, "LOI relative à l'exemple (1)")
+        self.assertEqual(propre["id"], "JORFDOLE000000000075")
+        self.assertEqual(len(autres), 1)
+
+    def test_dossier_seul(self):
+        seul = [{"id": "JORFDOLE000000000076", "titre": "Intitulé sans rapport"}]
+        self.assertEqual(travaux._dossier_du_texte(seul, self.LOI), (seul[0], []))
+
+    def test_plusieurs_sans_le_sien(self):
+        propre, autres = travaux._dossier_du_texte([self.DOSSIERS[0], self.DOSSIERS[2]], self.LOI)
+        self.assertIsNone(propre)
+        self.assertEqual(len(autres), 2)
+
+    def test_aucun_dossier(self):
+        self.assertEqual(travaux._dossier_du_texte(None, self.LOI), (None, []))
+
+    def pieces(self, n, max_pieces=None):
+        liens = [{"libelle": "Pièce %d" % i, "lien": "https://exemple.invalid/%d" % i} for i in range(n)]
+        reponse = {"dossierLegislatif": {"arborescence": {"niveaux": [{"libelle": "Sénat", "liens": liens}]}}}
+        with mock.patch.object(travaux.legifrance, "_post", lambda chemin, charge: reponse):
+            return travaux.dossier_pieces("JORFDOLE000000000072", max_pieces=max_pieces)
+
+    def test_toutes_les_pieces(self):
+        r = self.pieces(52)
+        self.assertEqual(len(r["pieces"]), 52)
+        self.assertNotIn("pieces_tronquees", r)
+
+    def test_coupe_signalee(self):
+        r = self.pieces(52, max_pieces=40)
+        self.assertEqual(len(r["pieces"]), 40)
+        self.assertTrue(r["pieces_tronquees"])
+        self.assertEqual(r["nombre_pieces"], 52)
+        self.assertNotIn("pieces_tronquees", self.pieces(30, max_pieces=40))
+
+    def travaux(self, dossiers):
+        def faux_post(chemin, charge):
+            if chemin == "/consult/getArticle":
+                return {"article": {"lienModifications": [
+                    {"linkType": "MODIFIE", "linkOrientation": "cible", "textCid": "JORFTEXT000000000070",
+                     "datePubliTexte": "2016-08-09", "textTitle": self.LOI, "natureText": "LOI"}]}}
+            if chemin == "/consult/jorf":
+                return {"nature": "LOI", "title": self.LOI, "prepWork": "", "dossiersLegislatifs": dossiers}
+            if chemin == "/consult/dossierLegislatif":
+                return {"dossierLegislatif": {"arborescence": {"niveaux": [{"libelle": "Sénat", "liens": [
+                    {"libelle": "Rapport " + charge["id"][-2:], "lien": "https://exemple.invalid/" + charge["id"]}]}]}}}
+            raise AssertionError("appel inattendu : " + chemin)
+        with mock.patch.object(travaux.legifrance, "resoudre", return_value=Pannes.TROUVE), \
+             mock.patch.object(travaux.legifrance, "_post", faux_post):
+            return travaux.travaux_pour_article("Code de l'environnement", "L. 123-2", "2016-09-01")
+
+    def test_reponse_dossier_propre(self):
+        r = self.travaux(self.DOSSIERS)
+        self.assertEqual(r["lien_dossier"], travaux._lien_dossier("JORFDOLE000000000072"))
+        self.assertEqual([p["libelle"] for p in r["pieces"]], ["Rapport 72"])
+        self.assertEqual([d["lien"] for d in r["autres_dossiers"]],
+                         [travaux._lien_dossier("JORFDOLE000000000071"),
+                          travaux._lien_dossier("JORFDOLE000000000073")])
+        self.assertNotIn("avertissement", r)
+
+    def test_reponse_sans_dossier_propre(self):
+        r = self.travaux([self.DOSSIERS[0], self.DOSSIERS[2]])
+        self.assertIsNone(r["lien_dossier"])
+        self.assertEqual(r["pieces"], [])
+        self.assertEqual(len(r["autres_dossiers"]), 2)
+        self.assertEqual(r["avertissement"], travaux._AVERTISSEMENT_DOSSIERS)
+
+
+class TextesDeLOrdonnance(unittest.TestCase):
+    """Pour une ordonnance : rapport au Président, ratification, lois d'habilitation.
+    Forme des réponses constatée le 02/11/2026 ; numéros, intitulés et identifiants fictifs."""
+
+    VISA = ("<p>Le Président de la République,<br/>Vu la Constitution, notamment son article 38 ;<br/>"
+            "Vu la loi n° 74-9999 du 7 août 1974 relative à l'exemple, notamment son article 23 ;<br/>"
+            "Vu la loi n° 2010-9999 du 12 juillet 2010 portant exemple ;<br/>"
+            "Vu la loi n° 2015-9999 du 6 août 2015 pour l'exemple, notamment ses articles 103 et 106 ;</p>")
+    PIECES = [{"libelle": "Ordonnance n° 2017-9999 du 26 janvier 2017 fictive", "categorie": "Textes du dossier",
+               "lien": "https://www.legifrance.gouv.fr/jorf/id/JORFTEXT000000000081"},
+              {"libelle": "Rapport au Président de la République relatif à l'ordonnance n° 2017-9999",
+               "categorie": "Textes du dossier", "lien": "https://www.legifrance.gouv.fr/jorf/id/JORFTEXT000000000082"},
+              {"libelle": "Ordonnance ratifiée par l'article 56-III de la loi n° 2018-9999 du 10 août 2018",
+               "categorie": "Textes du dossier", "lien": "https://www.legifrance.gouv.fr/jorf/id/JORFTEXT000000000083"}]
+
+    def appeler(self, rapport, visa=VISA, pieces=PIECES, panne=False):
+        def faux_post(chemin, charge):
+            self.assertEqual((chemin, charge), ("/consult/jorf", {"textCid": "JORFTEXT000000000082"}))
+            if panne:
+                raise RuntimeError("503 Service Unavailable")
+            return {"visa": "", "articles": [{"content": "<p>%s</p>" % rapport}]}
+        with mock.patch.object(travaux.legifrance, "_post", faux_post), \
+             mock.patch.object(travaux.legifrance, "lien_loi", lambda n: "https://exemple.invalid/" + n):
+            return travaux._textes_de_l_ordonnance(visa, pieces)
+
+    def lois(self, o, champ):
+        return [h["numero"] for h in o[champ]]
+
+    def test_rapport_et_ratification(self):
+        o, panne = self.appeler("Monsieur le Président.")
+        self.assertIsNone(panne)
+        self.assertEqual(o["rapport_au_president"]["lien"], self.PIECES[1]["lien"])
+        self.assertEqual([r["lien"] for r in o["ratification"]], [self.PIECES[2]["lien"]])
+
+    def test_potentielles_sans_designation(self):
+        # Le rapport n'évoque pas l'habilitation : les lois des visas citées avec « notamment »
+        # sont toutes renvoyées comme potentielles ; celle citée sans « notamment » est écartée.
+        o, _ = self.appeler("Monsieur le Président.")
+        self.assertNotIn("habilitation", o)
+        self.assertEqual(self.lois(o, "habilitations_potentielles"), ["74-9999", "2015-9999"])
+        self.assertEqual(o["habilitations_potentielles"][1]["articles"], "ses articles 103 et 106")
+        self.assertEqual(o["habilitations_potentielles"][1]["lien"], "https://exemple.invalid/2015-9999")
+
+    def test_designee_par_la_date(self):
+        o, _ = self.appeler("L'article 103 de la loi du 6 août 2015 susmentionné habilite le Gouvernement à agir.")
+        self.assertEqual(self.lois(o, "habilitation"), ["2015-9999"])
+        self.assertNotIn("habilitations_potentielles", o)
+
+    def test_designee_par_le_numero(self):
+        o, _ = self.appeler("La loi n° 2015-9999 a habilité le Gouvernement.")
+        self.assertEqual(self.lois(o, "habilitation"), ["2015-9999"])
+        self.assertNotIn("habilitations_potentielles", o)
+
+    def test_designee_par_l_article(self):
+        o, _ = self.appeler("Conformément à l'article 106 de la loi d'habilitation, l'ordonnance prévoit...")
+        self.assertEqual(self.lois(o, "habilitation"), ["2015-9999"])
+        self.assertNotIn("habilitations_potentielles", o)
+
+    def test_panne_sur_le_rapport(self):
+        o, panne = self.appeler("", panne=True)
+        self.assertIn("503", panne)
+        self.assertEqual(self.lois(o, "habilitations_potentielles"), ["74-9999", "2015-9999"])
+
+    def test_sans_rapport_ni_visa(self):
+        def interdit(chemin, charge):
+            raise AssertionError("appel inattendu : " + chemin)
+        with mock.patch.object(travaux.legifrance, "_post", interdit):
+            o, panne = travaux._textes_de_l_ordonnance("", self.PIECES[:1])
+        self.assertEqual((o, panne), ({}, None))
+
+    def test_reponse_ordonnance_et_loi(self):
+        lien = {"linkType": "CREE", "linkOrientation": "cible", "textCid": "JORFTEXT000000000081",
+                "datePubliTexte": "2017-01-27", "textTitle": "Ordonnance n° 2017-9999", "natureText": "ORDONNANCE"}
+        def faux_post(chemin, charge):
+            if chemin == "/consult/getArticle":
+                return {"article": {"lienModifications": [lien]}}
+            if chemin == "/consult/jorf" and charge["textCid"] == "JORFTEXT000000000081":
+                return {"nature": "ORDONNANCE", "title": self.PIECES[0]["libelle"], "visa": self.VISA,
+                        "dossiersLegislatifs": [{"id": "JORFDOLE000000000084", "titre": self.PIECES[0]["libelle"]}]}
+            if chemin == "/consult/jorf":
+                return {"articles": [{"content": "La loi n° 2015-9999 a habilité le Gouvernement."}]}
+            if chemin == "/consult/dossierLegislatif":
+                return {"dossierLegislatif": {"dossiers": [{"libelleTexte": p["libelle"], "idTexte": p["lien"][-20:]}
+                                                           for p in self.PIECES]}}
+            raise AssertionError("appel inattendu : " + chemin)
+        with mock.patch.object(travaux.legifrance, "resoudre", return_value=Pannes.TROUVE), \
+             mock.patch.object(travaux.legifrance, "_post", faux_post), \
+             mock.patch.object(travaux.legifrance, "lien_loi", lambda n: None):
+            r = travaux.travaux_pour_article("Code de l'environnement", "L. 181-18", "2020-01-01")
+        self.assertEqual(r["ordonnance"]["rapport_au_president"]["lien"], self.PIECES[1]["lien"])
+        self.assertEqual(self.lois(r["ordonnance"], "habilitation"), ["2015-9999"])
+        self.assertIn(travaux._AVERTISSEMENT_ORDONNANCE, r["avertissement"])
+        self.assertNotIn("ordonnance", PlusieursTextes().travaux([
+            {"linkType": "MODIFIE", "linkOrientation": "cible", "textCid": "JORFTEXT000000000013",
+             "datePubliTexte": "2003-07-31", "textTitle": "Loi", "natureText": "LOI"}]))
+
+
 class Demonstration(unittest.TestCase):
     """Le lancement direct (`python travaux.py`) exécute la démonstration jusqu'au bout."""
 
@@ -361,6 +655,9 @@ class Demonstration(unittest.TestCase):
         faux = types.ModuleType("legifrance")
         faux._panne = str
         faux.alineas_de_html = travaux.legifrance.alineas_de_html     # sans réseau
+        faux.textes_de_version = travaux.legifrance.textes_de_version  # sans réseau
+        faux.textes_produisant = travaux.legifrance.textes_produisant  # sans réseau ici : lien CREE
+        faux._fold = travaux.legifrance._fold                          # sans réseau
         faux.resoudre = lambda code, article, date, exact=False: {
             "trouve": True, "exact": True, "id": "LEGIARTI000000000001", "num": article,
             "version_debut": "2017-03-01", "version_fin": None}

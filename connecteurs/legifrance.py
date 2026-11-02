@@ -849,11 +849,152 @@ def _lien_texte(cid):
     return "https://www.legifrance.gouv.fr/jorf/id/%s" % cid
 
 
+# Liens de modification d'une version d'article (`lienModifications` de /consult/getArticle).
+# Les versions récentes portent des liens CREE ou MODIFIE : orientés « cible », ils désignent un
+# texte qui a créé ou modifié cet article ; orientés « source », un texte que CET article crée ou
+# modifie (l'article 2 de la loi n° 2018-148 en porte 29). Les versions anciennes portent des liens
+# CREATION ou MODIFICATION, toujours orientés « source », qui désignent le texte qui a produit la
+# version, et des références de type CODIFICATION, qui désignent le texte ayant inséré l'article
+# dans le code et se répètent d'une version à l'autre. Constaté le 02/11/2026 sur 105 versions de
+# 13 articles.
+_PRODUIT_CIBLE = ("CREE", "MODIFIE")
+_PRODUIT_ANCIEN = ("CREATION", "MODIFICATION")
+# Une abrogation désigne le texte qui a CLOS la version, jamais celui qui l'a produite : la
+# version de 1983 de l'article 1er de la loi n° 83-630 ne porte que son abrogation par
+# l'ordonnance n° 2000-914 (constaté le 02/11/2026).
+_CLOT = ("ABROGATION", "ABROGE")
+
+
+def textes_de_version(liens):
+    """Les textes qui ont produit une version d'article, d'après ses `lienModifications`, sans
+    hiérarchie : liste des liens retenus, un par texte (`textCid`), par date de publication.
+
+    Retenus : les liens CREE ou MODIFIE orientés « cible », et les liens CREATION ou MODIFICATION.
+    Si la version n'en porte aucun, ses références de type CODIFICATION, qui désignent le texte
+    ayant inséré l'article dans le code (cas fréquent de sa première version dans le code ;
+    `textes_produisant` remonte alors à la disposition codifiée) ; à défaut encore, tout lien qui
+    désigne un texte, sauf une abrogation, qui désigne le texte ayant clos la version. Plusieurs textes peuvent rester : Légifrance ne dit pas lequel
+    a produit la rédaction en cause (constaté sur l'article L. 123-2 du code de l'environnement,
+    versions du 10/08/2016 et du 01/01/2017)."""
+    liens = [l for l in (liens or []) if l.get("textCid")]
+    retenus = [l for l in liens
+               if (l.get("linkType") in _PRODUIT_CIBLE and l.get("linkOrientation") == "cible")
+               or l.get("linkType") in _PRODUIT_ANCIEN]
+    if not retenus:
+        retenus = [l for l in liens if l.get("linkType") == "CODIFICATION"]
+    if not retenus:
+        retenus = [l for l in liens if l.get("linkType") not in _CLOT]
+    vus, out = set(), []
+    for l in sorted(retenus, key=lambda l: l.get("datePubliTexte") or ""):
+        if l["textCid"] not in vus:
+            vus.add(l["textCid"])
+            out.append(l)
+    return out
+
+
+def _codification_seule(liens):
+    """Vrai si les textes retenus par `textes_de_version` ne sont que des références de type
+    CODIFICATION : la version a été insérée dans le code sans autre texte connu."""
+    return bool(liens) and all(l.get("linkType") == "CODIFICATION" for l in liens)
+
+
+def _version_avant(article, ms):
+    """Identifiant de la version de `article` (réponse de /consult/getArticle) en vigueur juste
+    avant la date `ms` (millisecondes) ; à défaut, celui de l'article lui-même."""
+    for v in article.get("articleVersions") or []:
+        debut, fin = v.get("dateDebut"), v.get("dateFin")
+        if debut is not None and debut < ms and (fin is None or fin >= ms):
+            return v.get("id")
+    return article.get("id")
+
+
+def origine_codification(article, profondeur=3):
+    """Les textes qui ont produit la rédaction d'un article codifié, d'après la disposition dont il
+    est issu. `article` : réponse de /consult/getArticle pour une version dont les seules
+    références sont de type CODIFICATION (voir `_codification_seule`).
+
+    Les références de type CODIFICATION désignent le texte qui a inséré l'article dans le code
+    (pour le code de l'environnement, l'ordonnance n° 2000-914) ; ses travaux n'éclairent pas
+    l'intention du législateur quand la codification s'est faite à droit constant. La disposition
+    d'origine est donnée par `lienConcordes`, références de type CONCORDE : l'article L. 512-1 du
+    code de l'environnement est issu de l'article 3 de la loi n° 76-663, l'article L. 411-2 de
+    l'article L. 211-2 de l'ancien code rural (constaté le 02/11/2026). Seules les références
+    orientées « cible » sont suivies : orientées « source », elles désignent la disposition qui EST
+    issue de l'article.
+
+    Pour chaque disposition d'origine, la version en vigueur juste avant la codification est lue,
+    et ses textes retenus comme pour toute version (`textes_de_version`) : ce peut être une loi qui
+    l'avait modifiée, et non la loi d'origine. Une disposition sans texte modificateur est dans sa
+    rédaction d'origine : le texte retenu est celui qui la contient. Une disposition elle-même
+    codifiée est remontée de la même façon, `profondeur` fois au plus.
+
+    Renvoie {"textes": [...], "chemin": [...]} : les références retenues, une par texte, sans
+    hiérarchie, et l'intitulé de chaque disposition d'origine traversée. Listes vides si l'origine
+    n'est pas indiquée. Une panne de PISTE remonte à l'appelant."""
+    textes, chemin = [], []
+    ms = article.get("dateDebut")
+    for c in article.get("lienConcordes") or []:
+        aid = c.get("articleId") or ""
+        # CONCORDE orienté « cible » : la disposition dont l'article est issu ; orienté « source »,
+        # celle qui en est issue, que la remontée ne doit pas suivre.
+        if (c.get("linkType") != "CONCORDE" or c.get("linkOrientation") != "cible"
+                or not aid.startswith("LEGIARTI")):
+            continue
+        ancien = (_post("/consult/getArticle", {"id": aid}) or {}).get("article") or {}
+        vid = _version_avant(ancien, ms) if ms is not None else aid
+        if vid and vid != ancien.get("id"):
+            ancien = (_post("/consult/getArticle", {"id": vid}) or {}).get("article") or {}
+        chemin.append(re.sub(r"\s+", " ", c.get("textTitle") or "").strip())
+        liens = textes_de_version(ancien.get("lienModifications"))
+        if _codification_seule(liens):
+            if profondeur > 1:
+                sous = origine_codification(ancien, profondeur - 1)
+                if sous["textes"]:
+                    textes += sous["textes"]
+                    chemin += sous["chemin"]
+            continue
+        if liens:
+            textes += liens
+        elif c.get("textCid") and c.get("natureText") != "CODE":
+            textes.append({"linkType": "CONCORDE", "textCid": c["textCid"],
+                           "textTitle": c.get("textTitle"), "natureText": c.get("natureText")})
+    vus, uniques = set(), []
+    for l in textes:
+        if l["textCid"] not in vus:
+            vus.add(l["textCid"])
+            uniques.append(l)
+    return {"textes": uniques, "chemin": chemin}
+
+
+def textes_produisant(article):
+    """Les textes qui ont produit une version d'article : `textes_de_version`, et, pour une version
+    dont les seules références sont de type CODIFICATION, les textes de la disposition codifiée
+    (`origine_codification`). `article` : réponse de /consult/getArticle pour cette version.
+
+    Renvoie (liens, codification). `codification` vaut None, sauf quand l'origine a été remontée :
+    {"codifie_par": intitulés des textes de codification, "issu_de": dispositions d'origine
+    traversées}. Si l'origine n'est pas indiquée, les références de codification sont renvoyées
+    telles quelles. Une panne de PISTE remonte à l'appelant."""
+    liens = textes_de_version(article.get("lienModifications"))
+    if not _codification_seule(liens):
+        return liens, None
+    origine = origine_codification(article)
+    if not origine["textes"]:
+        return liens, None
+    return origine["textes"], {
+        "codifie_par": [re.sub(r"\s+", " ", l.get("textTitle") or "").strip() for l in liens],
+        "issu_de": origine["chemin"]}
+
+
 def historique_article(code, article, date=None):
-    """HISTORIQUE des versions d'un article de code OU DE LOI : chaque version (dates, état) et le
-    TEXTE qui l'a créée ou modifiée (intitulé, nature, date, lien Légifrance vérifié). Source :
+    """HISTORIQUE des versions d'un article de code OU DE LOI : chaque version (dates, état) et les
+    TEXTES qui l'ont créée ou modifiée (intitulé, nature, date, lien Légifrance vérifié). Source :
     PISTE /consult/getArticle (champs articleVersions + lienModifications). Un texte désigné par
     son numéro (« loi n° 78-17 ») passe par le fonds LODA, comme `resoudre_loi`.
+    Chaque version porte `modifs`, la liste de ces textes (voir `textes_produisant`), sans
+    hiérarchie, et `modif`, ce texte quand il est seul, None sinon. Pour une version insérée dans
+    le code par codification, ce sont les textes de la disposition codifiée, et la version porte
+    `codification` (voir `textes_produisant`).
     Seul l'article demandé est retenu : si la cascade en renvoie un autre, la réponse porte `trouve`
     False, `exact` False, et le `num` et le `lien` de l'article le plus proche.
     Si PISTE n'a pas répondu, la réponse porte `panne` (le message de l'incident) ; une version
@@ -880,24 +1021,26 @@ def historique_article(code, article, date=None):
     panne = None
     for v in versions:
         vid = v.get("id")
-        modif = None
+        modifs, codification = [], None
         try:
             va = (_post("/consult/getArticle", {"id": vid}) or {}).get("article") or {}
-            lm = va.get("lienModifications") or []
-            cible = [x for x in lm if x.get("linkOrientation") == "cible" and x.get("linkType") in ("CREE", "MODIFIE")]
-            s = cible[0] if cible else (lm[0] if lm else None)
-            if s:
-                modif = {"titre": re.sub(r"\s+", " ", (s.get("textTitle") or "")).strip(),
-                         "nature": s.get("natureText"), "sens": s.get("linkType"),
-                         "date": s.get("datePubliTexte") or s.get("dateSignaTexte"),
-                         "lien": _lien_texte(s.get("textCid"))}
+            liens, codification = textes_produisant(va)
+            modifs = [{"titre": re.sub(r"\s+", " ", (s.get("textTitle") or "")).strip(),
+                       "nature": s.get("natureText"), "sens": s.get("linkType"),
+                       "date": s.get("datePubliTexte") or s.get("dateSignaTexte"),
+                       "lien": _lien_texte(s.get("textCid"))}
+                      for s in liens]
         except Exception as e:
             panne = _panne(e)
-        out.append({"version": v.get("version"), "debut": _iso(v.get("dateDebut")),
-                    "fin": _iso_fin(v.get("dateFin")), "etat": v.get("etat"),
-                    "lien_version": ("https://www.legifrance.gouv.fr/%s/article_lc/%s"
-                                     % ("loda" if est_loi else "codes", vid)) if vid else None,
-                    "modif": modif})
+        version = {"version": v.get("version"), "debut": _iso(v.get("dateDebut")),
+                   "fin": _iso_fin(v.get("dateFin")), "etat": v.get("etat"),
+                   "lien_version": ("https://www.legifrance.gouv.fr/%s/article_lc/%s"
+                                    % ("loda" if est_loi else "codes", vid)) if vid else None,
+                   "modifs": modifs,
+                   "modif": modifs[0] if len(modifs) == 1 else None}
+        if codification:
+            version["codification"] = codification
+        out.append(version)
     out.sort(key=lambda x: x.get("debut") or "")
     reponse = {"trouve": True, "code": r.get("code") or code, "article": r.get("num") or article,
                "cid": art.get("cid"), "lien": r.get("lien"),
