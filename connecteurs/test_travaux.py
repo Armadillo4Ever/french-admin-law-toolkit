@@ -346,6 +346,71 @@ class TextesDecodes(unittest.TestCase):
                 self.assertEqual(len(r[champ].splitlines()), 2)
 
 
+class PlusieursTextes(unittest.TestCase):
+    """Les textes qui ont produit la version sont tous renvoyés, chacun avec ses travaux, sans
+    hiérarchie ; un lien de codification est écarté. PISTE simulé ; identifiants fictifs."""
+
+    def lien(self, type_, orientation, cid, date):
+        return {"linkType": type_, "linkOrientation": orientation, "textCid": cid,
+                "datePubliTexte": date, "textTitle": "Texte " + cid[-2:], "natureText": "LOI"}
+
+    def travaux(self, liens):
+        def faux_post(chemin, charge):
+            if chemin == "/consult/getArticle":
+                return {"article": {"lienModifications": liens}}
+            if chemin == "/consult/jorf":
+                n = charge["textCid"][-2:]
+                return {"nature": "LOI", "title": "Loi " + n, "prepWork": "<p>Travaux %s</p>" % n,
+                        "dossiersLegislatifs": [{"id": "JORFDOLE0000000000" + n}]}
+            if chemin == "/consult/dossierLegislatif":
+                n = charge["id"][-2:]
+                return {"dossierLegislatif": {"arborescence": {"niveaux": [{"libelle": "Sénat", "liens": [
+                    {"libelle": "Rapport " + n, "lien": "https://exemple.invalid/rapport" + n}]}]},
+                    "exposeMotif": "<p>Motifs %s</p>" % n}}
+            raise AssertionError("appel inattendu : " + chemin)
+        with mock.patch.object(travaux.legifrance, "resoudre", return_value=Pannes.TROUVE), \
+             mock.patch.object(travaux.legifrance, "_post", faux_post):
+            return travaux.travaux_pour_article("Code de l'environnement", "L. 123-2", "2016-09-01")
+
+    def test_un_texte_au_premier_niveau(self):
+        r = self.travaux([self.lien("CODIFICATION", "source", "JORFTEXT000000000011", "2000-09-21"),
+                          self.lien("MODIFICATION", "source", "JORFTEXT000000000013", "2003-07-31")])
+        self.assertEqual(len(r["textes"]), 1)
+        self.assertEqual(r["loi"]["cid"], "JORFTEXT000000000013")
+        self.assertEqual(r["travaux_preparatoires"], "Travaux 13")
+        self.assertEqual(r["expose_motif"], "Motifs 13")
+        self.assertEqual(r["textes"][0]["loi"], r["loi"])
+        self.assertEqual(r["ratione_temporis"], travaux._RATIONE_TEMPORIS)
+        self.assertNotIn("avertissement", r)
+
+    def test_plusieurs_textes_sans_hierarchie(self):
+        r = self.travaux([self.lien("MODIFIE", "cible", "JORFTEXT000000000017", "2016-08-09"),
+                          self.lien("MODIFIE", "cible", "JORFTEXT000000000016", "2016-08-05")])
+        self.assertTrue(r["trouve"])
+        self.assertEqual([t["loi"]["cid"] for t in r["textes"]],
+                         ["JORFTEXT000000000016", "JORFTEXT000000000017"])
+        self.assertEqual([t["travaux_preparatoires"] for t in r["textes"]], ["Travaux 16", "Travaux 17"])
+        self.assertEqual([t["pieces"][0]["libelle"] for t in r["textes"]], ["Rapport 16", "Rapport 17"])
+        for champ in ("loi", "lien_texte", "lien_dossier", "travaux_preparatoires", "pieces", "expose_motif"):
+            self.assertNotIn(champ, r)
+        self.assertEqual(r["avertissement"], travaux._AVERTISSEMENT_PLUSIEURS)
+        self.assertEqual(r["ratione_temporis"], travaux._RATIONE_TEMPORIS_PLUSIEURS)
+
+    def test_avertissement_propre_a_chaque_texte(self):
+        liens = [self.lien("MODIFIE", "cible", "JORFTEXT000000000016", "2016-08-05"),
+                 self.lien("MODIFIE", "cible", "JORFTEXT000000000017", "2016-08-09")]
+        with mock.patch.object(travaux, "_avertissements",
+                               lambda nature, titre: [titre] if titre == "Loi 16" else []):
+            r = self.travaux(liens)
+        self.assertEqual(r["textes"][0]["avertissement"], "Loi 16")
+        self.assertNotIn("avertissement", r["textes"][1])
+
+    def test_aucun_texte(self):
+        r = self.travaux([])
+        self.assertFalse(r["trouve"])
+        self.assertEqual(r["message"], "Texte créateur de la version non identifié.")
+
+
 class Demonstration(unittest.TestCase):
     """Le lancement direct (`python travaux.py`) exécute la démonstration jusqu'au bout."""
 

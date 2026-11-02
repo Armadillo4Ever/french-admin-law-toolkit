@@ -327,6 +327,113 @@ class TermesDeRecherche(unittest.TestCase):
                 self.assertIsNone(self.valeur_envoyee(termes))
 
 
+def lien(type_, orientation, cid, date, titre=None):
+    """Lien de modification au format de /consult/getArticle. Identifiants et titres fictifs."""
+    return {"linkType": type_, "linkOrientation": orientation, "textCid": cid,
+            "datePubliTexte": date, "textTitle": titre or "Texte " + cid[-2:], "natureText": "LOI"}
+
+
+class TextesDeVersion(unittest.TestCase):
+    """textes_de_version : les textes qui ont produit une version, sans hiérarchie.
+    Les cas reprennent la forme des liens constatés le 02/11/2026 ; identifiants fictifs."""
+
+    CODIF_1 = lien("CODIFICATION", "source", "JORFTEXT000000000011", "2000-09-21")
+    CODIF_2 = lien("CODIFICATION", "source", "JORFTEXT000000000012", "2003-07-03")
+
+    def cids(self, liens):
+        return [l["textCid"] for l in legifrance.textes_de_version(liens)]
+
+    def test_version_ancienne_codification_ecartee(self):
+        # Forme de l'article L. 512-1 du code de l'environnement, version du 31/07/2003 : deux
+        # liens de codification, et la loi qui a produit la version, citée pour deux articles.
+        liens = [self.CODIF_1, self.CODIF_2,
+                 lien("MODIFICATION", "source", "JORFTEXT000000000013", "2003-07-31"),
+                 lien("MODIFICATION", "source", "JORFTEXT000000000013", "2003-07-31")]
+        self.assertEqual(self.cids(liens), ["JORFTEXT000000000013"])
+
+    def test_creation_ancienne(self):
+        # Forme de l'article L. 521-1 du code de justice administrative : la loi qui a créé
+        # l'article, et non l'ordonnance qui a codifié la partie législative.
+        liens = [self.CODIF_1, lien("CREATION", "source", "JORFTEXT000000000014", "2000-07-01"),
+                 self.CODIF_2]
+        self.assertEqual(self.cids(liens), ["JORFTEXT000000000014"])
+
+    def test_version_recente_codification_ecartee(self):
+        # Forme de l'article 1240 du code civil, version du 01/10/2016.
+        liens = [lien("MODIFIE", "cible", "JORFTEXT000000000015", "2016-02-11"), self.CODIF_1]
+        self.assertEqual(self.cids(liens), ["JORFTEXT000000000015"])
+
+    def test_plusieurs_textes_par_date(self):
+        # Forme de l'article L. 123-2 du code de l'environnement, version du 10/08/2016 : deux
+        # textes, renvoyés tous deux, du plus ancien au plus récent.
+        liens = [lien("MODIFIE", "cible", "JORFTEXT000000000017", "2016-08-09"),
+                 lien("MODIFIE", "cible", "JORFTEXT000000000016", "2016-08-05")]
+        self.assertEqual(self.cids(liens), ["JORFTEXT000000000016", "JORFTEXT000000000017"])
+
+    def test_meme_texte_une_fois(self):
+        # Forme de l'article L. 411-2 du code de l'environnement : une loi citée pour trois articles.
+        liens = [lien("MODIFIE", "cible", "JORFTEXT000000000018", "2016-08-09") for _ in range(3)]
+        self.assertEqual(self.cids(liens), ["JORFTEXT000000000018"])
+
+    def test_textes_modifies_par_l_article_ecartes(self):
+        # Article de loi : orientés « source », CREE et MODIFIE désignent les textes que CET article
+        # crée ou modifie (forme de l'article 2 de la loi n° 2018-148).
+        liens = [lien("MODIFIE", "source", "JORFTEXT000000000019", "2018-03-03"),
+                 lien("CREE", "source", "JORFTEXT000000000020", "2018-03-03"),
+                 lien("MODIFIE", "cible", "JORFTEXT000000000021", "2019-01-01")]
+        self.assertEqual(self.cids(liens), ["JORFTEXT000000000021"])
+
+    def test_codification_seule(self):
+        # Version d'origine d'un article codifié : seuls les liens de codification restent.
+        self.assertEqual(self.cids([self.CODIF_2, self.CODIF_1]),
+                         ["JORFTEXT000000000011", "JORFTEXT000000000012"])
+
+    def test_autre_type_a_defaut(self):
+        liens = [lien("TRANSFERE", "cible", "JORFTEXT000000000022", "2010-01-01")]
+        self.assertEqual(self.cids(liens), ["JORFTEXT000000000022"])
+
+    def test_aucun_texte(self):
+        for liens in (None, [], [{"linkType": "MODIFIE", "linkOrientation": "cible"}]):
+            with self.subTest(liens=liens):
+                self.assertEqual(legifrance.textes_de_version(liens), [])
+
+
+class HistoriqueTextes(unittest.TestCase):
+    """historique_article : chaque version porte `modifs`, ses textes, et `modif` quand il est seul.
+    PISTE simulé ; identifiants fictifs."""
+
+    def historique(self, liens):
+        version = {"id": "LEGIARTI000000000004", "version": "1.0", "dateDebut": None, "dateFin": None}
+        normal = post_en_panne("/aucun", num_rendu="L181-18", versions=[version])
+
+        def _post(chemin, charge):
+            reponse = normal(chemin, charge)
+            if chemin == "/consult/getArticle" and charge["id"] == version["id"]:
+                reponse["article"]["lienModifications"] = liens
+            return reponse
+        with mock.patch.object(legifrance, "_CODES_MAP", {"code de l'environnement": "Code de l'environnement"}), \
+             mock.patch.object(legifrance, "_post", _post):
+            return legifrance.historique_article("Code de l'environnement", "L. 181-18", "2024-03-15")
+
+    def test_un_texte(self):
+        v = self.historique([lien("MODIFIE", "cible", "JORFTEXT000000000015", "2016-02-11"),
+                             TextesDeVersion.CODIF_1])["versions"][0]
+        self.assertEqual(len(v["modifs"]), 1)
+        self.assertEqual(v["modif"], v["modifs"][0])
+        self.assertEqual(v["modif"]["lien"], legifrance._lien_texte("JORFTEXT000000000015"))
+
+    def test_plusieurs_textes_sans_hierarchie(self):
+        v = self.historique([lien("MODIFIE", "cible", "JORFTEXT000000000017", "2016-08-09"),
+                             lien("MODIFIE", "cible", "JORFTEXT000000000016", "2016-08-05")])["versions"][0]
+        self.assertEqual([m["date"] for m in v["modifs"]], ["2016-08-05", "2016-08-09"])
+        self.assertIsNone(v["modif"])
+
+    def test_aucun_texte(self):
+        v = self.historique([])["versions"][0]
+        self.assertEqual(v["modifs"], [])
+        self.assertIsNone(v["modif"])
+
+
 class Structure(unittest.TestCase):
     """La démonstration (`if __name__ == "__main__":`) est la dernière instruction du fichier :
     une fonction définie après elle n'existerait pas encore quand elle s'exécute."""
