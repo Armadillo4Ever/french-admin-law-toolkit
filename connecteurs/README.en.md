@@ -91,10 +91,16 @@ travaux.travaux_pour_article("code de l'environnement", "L. 121-8", "2024-03-15"
 
 The principle deserves explanation, because it is not obvious: the version of
 the article applicable on the date of the dispute is resolved, the text that
-**created** that version is identified (Légifrance `CREE` link), then its
-legislative file and its preparatory works are retrieved. A regulatory
+**produced** that version is identified (Légifrance modification links), then
+its legislative file and its preparatory works are retrieved. A regulatory
 provision (R. or D.) has no parliamentary proceedings: the module says so rather
 than searching in vain.
+
+Légifrance sometimes cites several texts for the same version, without saying
+which one produced the wording at issue. The module does not choose between
+them: it returns them all in `textes`, each with its preparatory works, along
+with an `avertissement` (warning). Links to texts that merely codified the
+article are set aside, except for the original version of the code.
 
 **The module returns links, not the content of the documents.** It provides the
 explanatory memorandum, the note on preparatory works published in the Journal

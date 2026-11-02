@@ -361,6 +361,7 @@ class Demonstration(unittest.TestCase):
         faux = types.ModuleType("legifrance")
         faux._panne = str
         faux.alineas_de_html = travaux.legifrance.alineas_de_html     # sans réseau
+        faux.textes_de_version = travaux.legifrance.textes_de_version  # sans réseau
         faux.resoudre = lambda code, article, date, exact=False: {
             "trouve": True, "exact": True, "id": "LEGIARTI000000000001", "num": article,
             "version_debut": "2017-03-01", "version_fin": None}

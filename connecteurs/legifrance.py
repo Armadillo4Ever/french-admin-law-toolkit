@@ -849,11 +849,49 @@ def _lien_texte(cid):
     return "https://www.legifrance.gouv.fr/jorf/id/%s" % cid
 
 
+# Liens de modification d'une version d'article (`lienModifications` de /consult/getArticle).
+# Les versions récentes portent des liens CREE ou MODIFIE : orientés « cible », ils désignent un
+# texte qui a créé ou modifié cet article ; orientés « source », un texte que CET article crée ou
+# modifie (l'article 2 de la loi n° 2018-148 en porte 29). Les versions anciennes portent des liens
+# CREATION ou MODIFICATION, toujours orientés « source », qui désignent le texte qui a produit la
+# version, et des liens CODIFICATION, qui désignent les textes ayant codifié l'article et se
+# répètent d'une version à l'autre. Constaté le 02/11/2026 sur 105 versions de 13 articles.
+_PRODUIT_CIBLE = ("CREE", "MODIFIE")
+_PRODUIT_ANCIEN = ("CREATION", "MODIFICATION")
+
+
+def textes_de_version(liens):
+    """Les textes qui ont produit une version d'article, d'après ses `lienModifications`, sans
+    hiérarchie : liste des liens retenus, un par texte (`textCid`), par date de publication.
+
+    Retenus : les liens CREE ou MODIFIE orientés « cible », et les liens CREATION ou MODIFICATION.
+    À défaut, les liens CODIFICATION (version d'origine d'un article codifié) ; à défaut encore,
+    tout lien qui désigne un texte. Plusieurs textes peuvent rester : Légifrance ne dit pas lequel
+    a produit la rédaction en cause (constaté sur l'article L. 123-2 du code de l'environnement,
+    versions du 10/08/2016 et du 01/01/2017)."""
+    liens = [l for l in (liens or []) if l.get("textCid")]
+    retenus = [l for l in liens
+               if (l.get("linkType") in _PRODUIT_CIBLE and l.get("linkOrientation") == "cible")
+               or l.get("linkType") in _PRODUIT_ANCIEN]
+    if not retenus:
+        retenus = [l for l in liens if l.get("linkType") == "CODIFICATION"]
+    if not retenus:
+        retenus = liens
+    vus, out = set(), []
+    for l in sorted(retenus, key=lambda l: l.get("datePubliTexte") or ""):
+        if l["textCid"] not in vus:
+            vus.add(l["textCid"])
+            out.append(l)
+    return out
+
+
 def historique_article(code, article, date=None):
-    """HISTORIQUE des versions d'un article de code OU DE LOI : chaque version (dates, état) et le
-    TEXTE qui l'a créée ou modifiée (intitulé, nature, date, lien Légifrance vérifié). Source :
+    """HISTORIQUE des versions d'un article de code OU DE LOI : chaque version (dates, état) et les
+    TEXTES qui l'ont créée ou modifiée (intitulé, nature, date, lien Légifrance vérifié). Source :
     PISTE /consult/getArticle (champs articleVersions + lienModifications). Un texte désigné par
     son numéro (« loi n° 78-17 ») passe par le fonds LODA, comme `resoudre_loi`.
+    Chaque version porte `modifs`, la liste de ces textes (voir `textes_de_version`), sans
+    hiérarchie, et `modif`, ce texte quand il est seul, None sinon.
     Seul l'article demandé est retenu : si la cascade en renvoie un autre, la réponse porte `trouve`
     False, `exact` False, et le `num` et le `lien` de l'article le plus proche.
     Si PISTE n'a pas répondu, la réponse porte `panne` (le message de l'incident) ; une version
@@ -880,24 +918,22 @@ def historique_article(code, article, date=None):
     panne = None
     for v in versions:
         vid = v.get("id")
-        modif = None
+        modifs = []
         try:
             va = (_post("/consult/getArticle", {"id": vid}) or {}).get("article") or {}
-            lm = va.get("lienModifications") or []
-            cible = [x for x in lm if x.get("linkOrientation") == "cible" and x.get("linkType") in ("CREE", "MODIFIE")]
-            s = cible[0] if cible else (lm[0] if lm else None)
-            if s:
-                modif = {"titre": re.sub(r"\s+", " ", (s.get("textTitle") or "")).strip(),
-                         "nature": s.get("natureText"), "sens": s.get("linkType"),
-                         "date": s.get("datePubliTexte") or s.get("dateSignaTexte"),
-                         "lien": _lien_texte(s.get("textCid"))}
+            modifs = [{"titre": re.sub(r"\s+", " ", (s.get("textTitle") or "")).strip(),
+                       "nature": s.get("natureText"), "sens": s.get("linkType"),
+                       "date": s.get("datePubliTexte") or s.get("dateSignaTexte"),
+                       "lien": _lien_texte(s.get("textCid"))}
+                      for s in textes_de_version(va.get("lienModifications"))]
         except Exception as e:
             panne = _panne(e)
         out.append({"version": v.get("version"), "debut": _iso(v.get("dateDebut")),
                     "fin": _iso_fin(v.get("dateFin")), "etat": v.get("etat"),
                     "lien_version": ("https://www.legifrance.gouv.fr/%s/article_lc/%s"
                                      % ("loda" if est_loi else "codes", vid)) if vid else None,
-                    "modif": modif})
+                    "modifs": modifs,
+                    "modif": modifs[0] if len(modifs) == 1 else None})
     out.sort(key=lambda x: x.get("debut") or "")
     reponse = {"trouve": True, "code": r.get("code") or code, "article": r.get("num") or article,
                "cid": art.get("cid"), "lien": r.get("lien"),

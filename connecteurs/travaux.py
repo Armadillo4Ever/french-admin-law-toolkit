@@ -2,10 +2,10 @@
 """Travaux parlementaires d'une disposition législative (via Légifrance PISTE).
 
 Principe : on résout la VERSION de l'article applicable à la date du litige
-(ratione temporis), on identifie le texte qui a CRÉÉ cette version (lien
-« CREE » de Légifrance), puis on récupère son dossier législatif et ses
-travaux préparatoires (prepWork), qui recensent les pièces Assemblée nationale
-et Sénat. Ne vaut que pour les dispositions législatives ; un article
+(ratione temporis), on identifie le ou les textes qui ont produit cette version
+(liens de modification de Légifrance, voir `legifrance.textes_de_version`), puis
+on récupère leur dossier législatif et leurs travaux préparatoires (prepWork),
+qui recensent les pièces Assemblée nationale et Sénat. Ne vaut que pour les dispositions législatives ; un article
 réglementaire (R./D.) n'a pas de travaux parlementaires.
 """
 import datetime
@@ -71,6 +71,13 @@ _AVERTISSEMENT_CODIFICATION = (
 # Indice seulement : rien dans les données ne dit qu'une codification est à droit constant.
 _RE_CODIFICATION = re.compile(r"partie législative|codification", re.IGNORECASE)
 
+_RATIONE_TEMPORIS = "Texte ayant créé la version applicable au litige (non la rédaction actuelle)."
+_RATIONE_TEMPORIS_PLUSIEURS = ("Textes ayant produit la version applicable au litige (non la "
+                               "rédaction actuelle).")
+_AVERTISSEMENT_PLUSIEURS = (
+    "Plusieurs textes ont modifié cette version, et Légifrance ne dit pas lequel a produit la "
+    "rédaction en cause : ils sont tous dans `textes`, chacun avec ses travaux, à vérifier un à un.")
+
 
 def _avertissements(nature, titre):
     """Avertissements sur le texte créateur de la version, d'après sa nature et son titre :
@@ -99,6 +106,11 @@ def _date_valide(date):
 def travaux_pour_article(code, article, date):
     """Retourne les travaux parlementaires du texte ayant créé la version de
     <article> du <code> applicable au <date> (YYYY-MM-DD).
+    Les textes qui ont produit la version sont dans `textes`, chacun avec ses travaux (voir
+    `_travaux_du_texte`). Quand il n'y en a qu'un, ses champs sont aussi au premier niveau de la
+    réponse (`loi`, `lien_texte`, `lien_dossier`, `travaux_preparatoires`, `pieces`,
+    `expose_motif`). Quand il y en a plusieurs, ils ne sont pas départagés : ces champs sont absents
+    du premier niveau, et `avertissement` le signale.
     Une date invalide est refusée d'emblée : `trouve` False, `date_invalide` True, et un message
     qui rappelle le format attendu ; PISTE n'est pas interrogé.
     Si le texte créateur est une ordonnance ou semble être une codification, la réponse porte un
@@ -137,27 +149,36 @@ def travaux_pour_article(code, article, date):
     except Exception as e:
         return {"trouve": False, "article": article, "code": code, "version": version,
                 "panne": legifrance._panne(e), "message": _MESSAGE_PANNE}
-    # texte ayant CRÉÉ cette version
-    cree = None
-    for l in (art.get("lienModifications") or []):
-        if l.get("linkType") == "CREE":
-            cree = l
-            break
-    if cree is None:
-        for l in (art.get("lienModifications") or []):
-            if l.get("textCid"):
-                cree = l
-                break
-    if not cree or not cree.get("textCid"):
+    liens = legifrance.textes_de_version(art.get("lienModifications"))
+    if not liens:
         return {"trouve": False, "article": article, "code": code, "version": version,
                 "message": "Texte créateur de la version non identifié."}
-    cid = cree["textCid"]
-    # consultation du texte -> dossier législatif + travaux préparatoires
-    doss_id = None
-    prep = ""
-    panne = None
-    nature = cree.get("natureText")
-    titre = cree.get("textTitle")
+    textes, panne = [], None
+    for lien in liens:
+        texte, p = _travaux_du_texte(lien)
+        textes.append(texte)
+        panne = panne or p
+    reponse = {"trouve": True, "article": article, "code": code, "version": version,
+               "textes": textes, "nota": _clean(art.get("nota")),
+               "ratione_temporis": _RATIONE_TEMPORIS}
+    if len(textes) == 1:
+        reponse.update(textes[0])
+    else:
+        reponse["ratione_temporis"] = _RATIONE_TEMPORIS_PLUSIEURS
+        reponse["avertissement"] = _AVERTISSEMENT_PLUSIEURS
+    if panne:
+        reponse["panne"] = panne
+    return reponse
+
+
+def _travaux_du_texte(lien):
+    """Travaux d'un texte qui a produit la version, désigné par un lien de modification.
+    Renvoie (texte, panne) : `texte` porte `loi`, `lien_texte`, `lien_dossier`,
+    `travaux_preparatoires`, `pieces`, `expose_motif` et, s'il y a lieu, `avertissement` ;
+    `panne` est le message de l'incident si PISTE n'a pas répondu, None sinon."""
+    cid = lien["textCid"]
+    doss_id, prep, panne = None, "", None
+    nature, titre = lien.get("natureText"), lien.get("textTitle")
     try:
         js = legifrance._post("/consult/jorf", {"textCid": cid})
         nature = js.get("nature") or nature
@@ -169,25 +190,17 @@ def travaux_pour_article(code, article, date):
     except Exception as e:
         panne = legifrance._panne(e)
     dp = dossier_pieces(doss_id) if doss_id else {"pieces": [], "expose_motif": None}
-    panne = panne or dp.get("panne")
-    reponse = {
-        "trouve": True, "article": article, "code": code, "version": version,
-        "loi": {"titre": titre, "nature": nature, "cid": cid,
-                "date_publi": cree.get("datePubliTexte")},
-        "lien_texte": _lien_texte(cid),
-        "lien_dossier": _lien_dossier(doss_id),
-        "travaux_preparatoires": prep,
-        "pieces": dp.get("pieces", []),
-        "expose_motif": dp.get("expose_motif"),
-        "nota": _clean(art.get("nota")),
-        "ratione_temporis": "Texte ayant créé la version applicable au litige (non la rédaction actuelle).",
-    }
+    texte = {"loi": {"titre": titre, "nature": nature, "cid": cid,
+                     "date_publi": lien.get("datePubliTexte")},
+             "lien_texte": _lien_texte(cid),
+             "lien_dossier": _lien_dossier(doss_id),
+             "travaux_preparatoires": prep,
+             "pieces": dp.get("pieces", []),
+             "expose_motif": dp.get("expose_motif")}
     avertissements = _avertissements(nature, titre)
     if avertissements:
-        reponse["avertissement"] = " ".join(avertissements)
-    if panne:
-        reponse["panne"] = panne
-    return reponse
+        texte["avertissement"] = " ".join(avertissements)
+    return texte, panne or dp.get("panne")
 
 
 def travaux_pour_textes(textes, date):
