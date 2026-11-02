@@ -123,6 +123,15 @@ is an ordinance (*ordonnance*), or appears to be a codification, the response
 carries an `avertissement` (warning) indicating where to look for the
 legislature's intent.
 
+An ordinance has no parliamentary debates. For one, the response carries an
+`ordonnance` field giving, when Légifrance indicates them, the report to the
+President of the Republic and the ratifying act, taken from the ordinance's
+legislative file, and the enabling act (*loi d'habilitation*), sought among the
+acts cited in the recitals (« Vu la loi n° …, notamment son article … »). When the report
+to the President names the enabling act, only that one is returned
+(`habilitation`); otherwise all potential ones are, unranked
+(`habilitations_potentielles`).
+
 ## EUR-Lex
 
 ```python
