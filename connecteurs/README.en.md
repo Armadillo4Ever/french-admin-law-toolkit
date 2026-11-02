@@ -101,11 +101,15 @@ which one produced the wording at issue. The module does not choose between
 them: it returns them all in `textes`, each with its preparatory works, along
 with an `avertissement` (warning).
 
-A version may also carry codification links, which point to the text that
-codified the article and are repeated from one version to the next. They are set
-aside when the version carries other links. When it carries no other link, as is
-often the case for the first version of an article in the code, they are kept,
-for lack of any other indication.
+The first version of an article in a code often cites only the text that
+inserted it there, for instance ordinance No. 2000-914 for the environmental
+code. That text's preparatory works say nothing of the legislature's intent when
+the codification was made without change of substance (*à droit constant*). The
+module therefore goes back to the provision the article comes from, which
+Légifrance indicates (article L. 512-1 of the environmental code comes from
+article 3 of Act No. 76-663), and returns the texts that produced its wording on
+the day of codification. The response says so in a `codification` field, which
+names the codifying text and the original provision.
 
 **The module returns links, not the content of the documents.** It provides the
 explanatory memorandum, the note on preparatory works published in the Journal

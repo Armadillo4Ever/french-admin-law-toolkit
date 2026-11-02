@@ -74,6 +74,10 @@ _RE_CODIFICATION = re.compile(r"partie législative|codification", re.IGNORECASE
 _RATIONE_TEMPORIS = "Texte ayant créé la version applicable au litige (non la rédaction actuelle)."
 _RATIONE_TEMPORIS_PLUSIEURS = ("Textes ayant produit la version applicable au litige (non la "
                                "rédaction actuelle).")
+_AVERTISSEMENT_ORIGINE = (
+    "Version insérée dans le code par codification : les textes renvoyés sont ceux de la "
+    "disposition codifiée (voir `codification`). Leurs travaux éclairent l'intention du "
+    "législateur si la codification s'est faite à droit constant.")
 _AVERTISSEMENT_PLUSIEURS = (
     "Plusieurs textes ont modifié cette version, et Légifrance ne dit pas lequel a produit la "
     "rédaction en cause : ils sont tous dans `textes`, chacun avec ses travaux, à vérifier un à un.")
@@ -111,6 +115,9 @@ def travaux_pour_article(code, article, date):
     réponse (`loi`, `lien_texte`, `lien_dossier`, `travaux_preparatoires`, `pieces`,
     `expose_motif`). Quand il y en a plusieurs, ils ne sont pas départagés : ces champs sont absents
     du premier niveau, et `avertissement` le signale.
+    Pour une version insérée dans le code par codification, les textes sont ceux de la disposition
+    codifiée (voir `legifrance.textes_produisant`) : la réponse porte alors `codification`, qui
+    nomme le texte de codification et la disposition d'origine, et un `avertissement`.
     Une date invalide est refusée d'emblée : `trouve` False, `date_invalide` True, et un message
     qui rappelle le format attendu ; PISTE n'est pas interrogé.
     Si le texte créateur est une ordonnance ou semble être une codification, la réponse porte un
@@ -149,11 +156,18 @@ def travaux_pour_article(code, article, date):
     except Exception as e:
         return {"trouve": False, "article": article, "code": code, "version": version,
                 "panne": legifrance._panne(e), "message": _MESSAGE_PANNE}
-    liens = legifrance.textes_de_version(art.get("lienModifications"))
+    try:
+        liens, codification = legifrance.textes_produisant(art)
+    except Exception as e:
+        # l'origine d'un article codifié n'a pu être lue : les références de codification restent
+        liens, codification = legifrance.textes_de_version(art.get("lienModifications")), None
+        panne_origine = legifrance._panne(e)
+    else:
+        panne_origine = None
     if not liens:
         return {"trouve": False, "article": article, "code": code, "version": version,
                 "message": "Texte créateur de la version non identifié."}
-    textes, panne = [], None
+    textes, panne = [], panne_origine
     for lien in liens:
         texte, p = _travaux_du_texte(lien)
         textes.append(texte)
@@ -162,10 +176,16 @@ def travaux_pour_article(code, article, date):
                "textes": textes, "nota": _clean(art.get("nota")),
                "ratione_temporis": _RATIONE_TEMPORIS}
     if len(textes) == 1:
-        reponse.update(textes[0])
+        reponse.update(textes[0])        # avec, s'il y a lieu, l'avertissement propre au texte
     else:
         reponse["ratione_temporis"] = _RATIONE_TEMPORIS_PLUSIEURS
-        reponse["avertissement"] = _AVERTISSEMENT_PLUSIEURS
+    if codification:
+        reponse["codification"] = codification
+    avertissements = [a for a in ((_AVERTISSEMENT_ORIGINE if codification else None),
+                                  (_AVERTISSEMENT_PLUSIEURS if len(textes) > 1 else None),
+                                  reponse.get("avertissement")) if a]
+    if avertissements:
+        reponse["avertissement"] = " ".join(avertissements)
     if panne:
         reponse["panne"] = panne
     return reponse
