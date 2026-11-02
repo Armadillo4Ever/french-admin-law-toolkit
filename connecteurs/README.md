@@ -89,10 +89,24 @@ travaux.travaux_pour_article("code de l'environnement", "L. 121-8", "2024-03-15"
 
 Le principe mérite d'être expliqué, parce qu'il n'est pas évident : on résout la
 version de l'article applicable à la date du litige, on identifie le texte qui a
-**créé** cette version (lien `CREE` de Légifrance), puis on récupère son dossier
-législatif et ses travaux préparatoires. Une disposition réglementaire (R. ou
-D.) n'a pas de travaux parlementaires : le module le dit plutôt que de chercher
-en vain.
+**produit** cette version (liens de modification de Légifrance), puis on récupère
+son dossier législatif et ses travaux préparatoires. Une disposition
+réglementaire (R. ou D.) n'a pas de travaux parlementaires : le module le dit
+plutôt que de chercher en vain.
+
+Légifrance cite parfois plusieurs textes pour une même version, sans dire lequel
+a produit la rédaction en cause. Le module ne les départage pas : il les renvoie
+tous dans `textes`, chacun avec ses travaux, avec un `avertissement`.
+
+La première version d'un article dans un code ne cite souvent que le texte qui
+l'y a inséré, par exemple l'ordonnance n° 2000-914 pour le code de
+l'environnement. Les travaux de ce texte n'apprennent rien sur l'intention du
+législateur quand la codification s'est faite à droit constant. Le module remonte
+donc à la disposition dont l'article est issu, que Légifrance indique (l'article
+L. 512-1 du code de l'environnement vient de l'article 3 de la loi n° 76-663), et
+renvoie les textes qui ont produit sa rédaction au jour de la codification. La
+réponse le signale par un champ `codification`, qui nomme le texte de
+codification et la disposition d'origine.
 
 **Le module renvoie des liens, pas le contenu des pièces.** Il donne l'exposé des
 motifs, la note de travaux préparatoires publiée au Journal officiel et la liste
