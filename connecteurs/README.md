@@ -96,9 +96,13 @@ plutôt que de chercher en vain.
 
 Légifrance cite parfois plusieurs textes pour une même version, sans dire lequel
 a produit la rédaction en cause. Le module ne les départage pas : il les renvoie
-tous dans `textes`, chacun avec ses travaux, avec un `avertissement`. Les liens
-qui désignent les textes ayant seulement codifié l'article sont écartés, sauf
-pour la version d'origine du code.
+tous dans `textes`, chacun avec ses travaux, avec un `avertissement`.
+
+Une version peut aussi porter des liens de codification, qui désignent le texte
+ayant codifié l'article et se répètent d'une version à l'autre. Ils sont écartés
+quand la version porte d'autres liens. Quand elle n'en porte pas d'autres, comme
+souvent la première version d'un article dans le code, ils sont gardés, faute
+d'autre indication.
 
 **Le module renvoie des liens, pas le contenu des pièces.** Il donne l'exposé des
 motifs, la note de travaux préparatoires publiée au Journal officiel et la liste

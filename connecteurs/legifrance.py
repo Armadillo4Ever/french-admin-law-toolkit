@@ -865,8 +865,9 @@ def textes_de_version(liens):
     hiérarchie : liste des liens retenus, un par texte (`textCid`), par date de publication.
 
     Retenus : les liens CREE ou MODIFIE orientés « cible », et les liens CREATION ou MODIFICATION.
-    À défaut, les liens CODIFICATION (version d'origine d'un article codifié) ; à défaut encore,
-    tout lien qui désigne un texte. Plusieurs textes peuvent rester : Légifrance ne dit pas lequel
+    Si la version n'en porte aucun, ses liens CODIFICATION, faute d'autre indication (cas fréquent
+    de la première version d'un article dans le code) ; à défaut encore, tout lien qui désigne un
+    texte. Plusieurs textes peuvent rester : Légifrance ne dit pas lequel
     a produit la rédaction en cause (constaté sur l'article L. 123-2 du code de l'environnement,
     versions du 10/08/2016 et du 01/01/2017)."""
     liens = [l for l in (liens or []) if l.get("textCid")]

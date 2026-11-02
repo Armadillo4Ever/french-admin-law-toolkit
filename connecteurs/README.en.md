@@ -99,8 +99,13 @@ than searching in vain.
 Légifrance sometimes cites several texts for the same version, without saying
 which one produced the wording at issue. The module does not choose between
 them: it returns them all in `textes`, each with its preparatory works, along
-with an `avertissement` (warning). Links to texts that merely codified the
-article are set aside, except for the original version of the code.
+with an `avertissement` (warning).
+
+A version may also carry codification links, which point to the text that
+codified the article and are repeated from one version to the next. They are set
+aside when the version carries other links. When it carries no other link, as is
+often the case for the first version of an article in the code, they are kept,
+for lack of any other indication.
 
 **The module returns links, not the content of the documents.** It provides the
 explanatory memorandum, the note on preparatory works published in the Journal
