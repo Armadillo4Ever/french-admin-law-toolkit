@@ -320,21 +320,59 @@ def _canon_code(code):
 
 
 # « article », « Article », « articles », « art. », « Art. », « l'article » en tête d'une désignation
-_RE_PREFIXE_ARTICLE = re.compile(r"^\s*(?:l['’]\s*)?art(?:icle)?s?\.?\s*", re.IGNORECASE)
+_RE_PREFIXE_ARTICLE = re.compile(r"^\s*(?:l['’]\s*|les\s+)?art(?:icle)?s?\.?\s*", re.IGNORECASE)
+
+# Mention d'une subdivision de l'article, en fin de désignation, sans ambiguïté : paragraphe en
+# chiffres romains après une virgule ou entre parenthèses (« L. 181-18, I », « L. 181-18 (II) ») ;
+# alinéa (« al. 2 », « alinéa 3 », « premier alinéa ») ; « 8° » ; « a) ».
+_RE_SUBDIVISION = re.compile(r"""
+    \s*,\s*\(?[IVX]+\)?\s*$
+  | \s*\([IVX]+\)\s*$
+  | \s*,?\s*(?:al\.|alin[ée]a)\s*\d+.*$
+  | \s*,?\s*(?:premier|deuxième|troisième|quatrième|dernier|avant-dernier)\s+alin[ée]a.*$
+  | \s*,?\s*\d+\s*°.*$
+  | \s*,?\s*[a-zA-Z]\s*\)\s*$
+  """, re.IGNORECASE | re.VERBOSE)
+
+# Fin ambiguë : dernier mot, séparé du numéro par une espace, fait uniquement des lettres I, V, X et
+# L. Ce peut être une lettre du numéro (article 150 V du code général des impôts, constaté le
+# 02/11/2026) ou un numéro de paragraphe (« L. 181-18 V », paragraphe V). Rien dans l'écriture ne
+# permet de trancher : le numéro est d'abord cherché tel qu'il est écrit, puis sans ce dernier mot.
+# Un dernier mot qui contient une autre lettre (« 150 VB », « 39 C », « L. 54 A ») ne peut pas être
+# un numéro de paragraphe : il n'est jamais retiré.
+_RE_FIN_AMBIGUE = re.compile(r"^(.*\S)\s+([IVXL]+)$")
 
 
-def _art_candidates(article):
-    """Du plus spécifique au plus général : retire le mot « article » ou « art. » en tête, les
-    alinéas (« 8° », « a) ») et, en cascade, les subdivisions terminales séparées par un tiret
-    (ex. CGI 158-5-a -> 158).
-    « L. 314-11 8° » -> ['L314-11', 'L314'] ; « 158-5-a » -> ['158-5-a','158-5','158'] ;
-    « Article L. 181-18 » -> ['L181-18', 'L181'] ; « article 6 » -> ['6']."""
-    a = _RE_PREFIXE_ARTICLE.sub("", article or "")      # retire « article », « art. »
-    a = re.sub(r"\s*\d+\s*°.*$", "", a)                  # retire « 8° … »
-    a = re.sub(r"\s*[a-zA-Z]\s*\)\s*$", "", a)          # retire « a) »
+def _decouper(article):
+    """Sépare une désignation d'article de ses mentions de subdivision sans ambiguïté (voir
+    `_RE_SUBDIVISION`), même enchaînées. Renvoie (numéro, subdivision) : « L. 181-18, I, al. 2 »
+    -> (« L. 181-18 », « I, al. 2 ») ; subdivision None s'il n'y en a pas. « article », « art. »
+    et « les articles » en tête sont retirés."""
+    a = _RE_PREFIXE_ARTICLE.sub("", article or "")
+    parties = []
+    while True:
+        m = _RE_SUBDIVISION.search(a)
+        if not m or m.start() == 0:
+            break
+        partie = m.group(0).strip(" ,")
+        romain = re.fullmatch(r"\(([IVX]+)\)", partie, re.IGNORECASE)
+        parties.insert(0, romain.group(1) if romain else partie)
+        a = a[:m.start()]
+    return a.strip(), (", ".join(parties) or None)
+
+
+def _sans_subdivision(a):
+    """La désignation sans ses mentions de subdivision sans ambiguïté (voir `_decouper`)."""
+    return _decouper(a)[0]
+
+
+def _formes(a, cascade=True):
+    """Graphies d'un numéro d'article à essayer auprès de Légifrance, de la plus spécifique à la
+    plus générale ; avec `cascade`, les subdivisions terminales séparées par un tiret sont retirées
+    tour à tour (CGI 158-5-a -> 158)."""
     core = re.sub(r"[\s.]", "", a.strip())                # « L. 314-11 » -> « L314-11 »
     bases = [core] if core else []
-    while "-" in core:
+    while cascade and "-" in core:
         core = core.rsplit("-", 1)[0]
         if core and core not in bases:
             bases.append(core)
@@ -358,16 +396,55 @@ def _art_candidates(article):
     return cands
 
 
+def _candidats_detail(article):
+    """Les numéros à essayer pour `article` (voir `_art_candidates`), chacun avec la fin ambiguë
+    qu'il laisse de côté, lue alors comme un paragraphe (None s'il n'en laisse pas), et la
+    subdivision sans ambiguïté retirée de la désignation. Renvoie ([(numéro, paragraphe)],
+    subdivision)."""
+    numero, subdivision = _decouper(article)
+    m = _RE_FIN_AMBIGUE.match(numero)
+    if not m:
+        return [(c, None) for c in _formes(numero)], subdivision
+    detail = [(c, None) for c in _formes(numero, cascade=False)]
+    deja = {c for c, _ in detail}
+    detail += [(c, m.group(2)) for c in _formes(m.group(1)) if c not in deja]
+    return detail, subdivision
+
+
+def _art_candidates(article):
+    """Du plus spécifique au plus général : retire le mot « article » ou « art. » en tête, les
+    mentions de subdivision sans ambiguïté (« , I », « al. 2 », « 8° », « a) ») et, en cascade,
+    les subdivisions terminales séparées par un tiret (ex. CGI 158-5-a -> 158). Une fin ambiguë
+    (voir `_RE_FIN_AMBIGUE`) est d'abord gardée, puis retirée (« 150 V » est un article du CGI).
+    « L. 314-11 8° » -> ['L314-11', 'L314'] ; « 158-5-a » -> ['158-5-a','158-5','158'] ;
+    « Article L. 181-18 » -> ['L181-18', 'L181'] ; « article 6 » -> ['6'] ;
+    « L. 181-18, I, al. 2 » -> ['L181-18', 'L181'] ;
+    « L. 181-18 V » -> ['L181-18 V', 'L181-18V', 'L181-18', 'L181']."""
+    return [c for c, _ in _candidats_detail(article)[0]]
+
+
+def _subdivision_rendue(subdivision, paragraphe):
+    """Subdivision à signaler dans la réponse : celle retirée de la désignation, précédée de la
+    fin ambiguë laissée de côté et lue comme un paragraphe, s'il y en a une. None s'il n'y a
+    rien."""
+    parties = [p for p in (paragraphe, subdivision) if p]
+    return ", ".join(parties) or None
+
+
 def _meme_article(demande, rendu):
     """Deux écritures d'un même numéro d'article (« L. 321-3 » et « L321-3 ») désignent-elles le
     même article ? Comparaison sur la forme canonique, sans « article » ou « art. » en tête,
-    sans espaces ni points, alinéas retirés."""
+    sans espaces ni points, mentions de subdivision retirées. Une fin ambiguë peut être un
+    paragraphe : « L. 181-18 V » désigne aussi bien L. 181-18 que L. 181-18 V."""
     def canon(x):
-        x = _RE_PREFIXE_ARTICLE.sub("", str(x or ""))       # « article », « art. »
-        x = re.sub(r"\s*\d+\s*°.*$", "", x)                 # « 8° … »
-        x = re.sub(r"\s*[a-zA-Z]\s*\)\s*$", "", x)          # « a) »
-        return re.sub(r"[\s.‑]", "", x).strip().lower()
-    return bool(canon(demande)) and canon(demande) == canon(rendu)
+        return re.sub(r"[\s.‑]", "", _sans_subdivision(str(x or ""))).strip().lower()
+    voulu, rendu = canon(demande), canon(rendu)
+    if not voulu:
+        return False
+    if voulu == rendu:
+        return True
+    m = _RE_FIN_AMBIGUE.match(_sans_subdivision(str(demande or "")))
+    return bool(m) and canon(m.group(1)) == rendu
 
 
 _RE_NUM_LOI = re.compile(r"n[°º]\s*(\d{2,4}[-‑]\d+)")
@@ -413,6 +490,8 @@ def resoudre_loi(nom, article, date, exact=False):
     Relevé le 01/09/2026. On passe donc par le fonds LODA : le texte est identifié par son
     numéro, son plan est demandé une fois, et l'article y est cherché par son numéro.
     """
+    if _plusieurs(article):
+        return _refus_plusieurs(nom, article, date)
     m = _RE_NUM_LOI.search(nom or "")
     if not m:
         return {"code": nom, "article": article, "date": date, "trouve": False, "brut": None}
@@ -434,9 +513,13 @@ def resoudre_loi(nom, article, date, exact=False):
         if len(_TOC_CACHE) > 40:
             _TOC_CACHE.clear()
         _TOC_CACHE[ck] = r
-    voulus = [_fold(x) for x in _art_candidates(article)]
+    detail, subdivision = _candidats_detail(article)
+    voulus = {}
+    for c, paragraphe in detail:
+        voulus.setdefault(_fold(c), paragraphe)
     for a in _articles_de_loda(r, []):
         if _fold(str(a.get("num") or "")) in voulus:
+            subdiv = _subdivision_rendue(subdivision, voulus[_fold(str(a.get("num") or ""))])
             html = a.get("content") or a.get("texteHtml") or ""
             aid = a.get("id") or a.get("cid") or ""
             # L'ARTICLE RENDU EST-IL BIEN CELUI DEMANDÉ ? La recherche procède en cascade, du plus
@@ -457,6 +540,8 @@ def resoudre_loi(nom, article, date, exact=False):
                 "lien": ("https://www.legifrance.gouv.fr/loda/article_lc/%s" % aid) if aid
                         else ("https://www.legifrance.gouv.fr/loda/id/%s" % tid),
             }
+            if subdiv:
+                r["subdivision"] = subdiv
             return _ecarter_inexact(r) if exact else r
     return {"code": nom, "article": article, "date": date, "trouve": False, "brut": None}
 
@@ -464,7 +549,8 @@ def resoudre_loi(nom, article, date, exact=False):
 def resoudre(code, article, date, exact=False):
     """Retourne l'article de <code> portant le n° <article>, dans sa version au <date>.
     Tolère les alias de codes (CESEDA, CGI, LPF...), le mot « article » ou « art. » devant le
-    numéro et les suffixes d'alinéa (« 8° »). `version_fin` vaut None pour une version sans
+    numéro et les mentions de subdivision (« , I », « al. 2 », « 8° ») ; la subdivision citée
+    est rendue dans `subdivision`, pour ne pas perdre la précision de la citation. `version_fin` vaut None pour une version sans
     terme, c'est-à-dire encore en vigueur (voir `_iso_fin`).
 
     Par défaut, un article autre que celui demandé, renvoyé par la cascade de `_art_candidates`,
@@ -473,11 +559,19 @@ def resoudre(code, article, date, exact=False):
 
     Si le texte visé n'est pas un code mais une LOI, la recherche est aiguillée vers le fonds
     LODA : les deux fonds sont distincts, et chercher un article de loi dans CODE_DATE ne rend
-    jamais rien."""
+    jamais rien.
+
+    Une désignation de plusieurs articles (« L. 181-18 et L. 181-19 », « L. 181-18 à L. 181-20 »,
+    « et suivants ») n'est pas cherchée : la réponse porte `plusieurs` True et un `message` qui
+    renvoie à `resoudre_plusieurs`. Elle donnait auparavant un numéro absurde à Légifrance
+    (« L181-18 et L. 181-19 », puis, en cascade, « L181 »)."""
+    if _plusieurs(article):
+        return _refus_plusieurs(code, article, date)
     if not code_connu(code) and _RE_NUM_LOI.search(code or ""):
         return resoudre_loi(code, article, date, exact=exact)
     code = _canon_code(code)
-    for num in _art_candidates(article):
+    detail, subdivision = _candidats_detail(article)
+    for num, paragraphe in detail:
         payload = {"recherche": {
             "champs": [{"typeChamp": "NUM_ARTICLE",
                         "criteres": [{"typeRecherche": "EXACTE", "valeur": num, "operateur": "ET"}],
@@ -511,8 +605,176 @@ def resoudre(code, article, date, exact=False):
             "version_fin": _iso_fin(art.get("dateFin")),
             "lien": f"https://www.legifrance.gouv.fr/codes/article_lc/{art.get('id') or ids[0]}",
         }
+        subdiv = _subdivision_rendue(subdivision, paragraphe)
+        if subdiv:
+            r["subdivision"] = subdiv
         return _ecarter_inexact(r) if exact else r
     return {"code": code, "article": article, "date": date, "trouve": False, "brut": None}
+
+
+# ---------- désignations de plusieurs articles ----------
+_RE_SUIVANTS = re.compile(r"\b(?:et\s+)?(?:s(?:uiv(?:ant)?s?)?\.|suivants|ss\.?)\s*$", re.IGNORECASE)
+_RE_PREFIXE_NUM = re.compile(r"^\s*((?:LO|[LRDA])\*?)\.?\s*(?=\d)", re.IGNORECASE)
+_RE_PLAGE = re.compile(r"^(.+?)\s+(?:à|au)\s+(.+)$", re.IGNORECASE)
+# Morceau qui n'est qu'une mention de subdivision de l'article précédent : « I », « (II) »,
+# « al. 2 », « 3° », « a) », « premier alinéa ».
+_RE_MORCEAU_SUBDIVISION = re.compile(
+    r"^(?:\(?[IVX]+\)?|al\.\s*\d+|alin[ée]a\s*\d+|\d+\s*°.*|[a-z]\)|\w+\s+alin[ée]a)$", re.IGNORECASE)
+
+
+def _designations(texte):
+    """Lit une désignation d'un ou plusieurs articles.
+    Renvoie (elements, refus) : `elements`, liste de ("article", numéro) et de ("plage", premier,
+    dernier), dans l'ordre du texte ; `refus`, un message si la désignation ne peut être lue, None
+    sinon.
+
+    « articles L. 181-18 et L. 181-19 », « L. 181-18, L. 181-19 et L. 181-21 », « L. 181-18 à
+    L. 181-20 », « articles 1240 et 1241 ». Un numéro sans préfixe reprend celui du numéro
+    précédent (« L. 181-18 et 181-19 » : deux articles L.). Les mentions de paragraphe et
+    d'alinéa restent attachées à leur article (« L. 181-18, I et L. 181-19 » : « L. 181-18, I »
+    et « L. 181-19 »), qui les rend dans `subdivision`. « et suivants » est refusé : la liste
+    n'est pas fermée."""
+    t = _RE_PREFIXE_ARTICLE.sub("", texte or "").strip()
+    if _RE_SUIVANTS.search(t):
+        return [], ("« et suivants » ne désigne pas une liste fermée d'articles : préciser le "
+                    "dernier (« L. 181-18 à L. 181-20 »).")
+    elements, prefixe = [], None
+
+    def numero(x):
+        nonlocal prefixe
+        x = _RE_PREFIXE_ARTICLE.sub("", x).strip()
+        m = _RE_PREFIXE_NUM.match(x)
+        if m:
+            prefixe = m.group(1).upper() + "."
+        elif prefixe and re.match(r"^\d", x):
+            x = prefixe + " " + x
+        return x
+
+    for morceau in re.split(r"\s*(?:,|;|\bet\b)\s*", t):
+        morceau = morceau.strip()
+        if not morceau:
+            continue
+        if _RE_MORCEAU_SUBDIVISION.match(morceau):
+            # « L. 181-18, I » : la mention reste attachée à l'article qui précède
+            if elements and elements[-1][0] == "article":
+                elements[-1] = ("article", elements[-1][1] + ", " + morceau)
+            continue
+        m = _RE_PLAGE.match(morceau)
+        if m:
+            elements.append(("plage", numero(m.group(1)), numero(m.group(2))))
+        else:
+            elements.append(("article", numero(morceau)))
+    if not elements:
+        return [], "Aucun numéro d'article lu."
+    return elements, None
+
+
+def _refus_plusieurs(code, article, date):
+    """Réponse de `resoudre` à une désignation de plusieurs articles, sans appel à PISTE."""
+    _, refus = _designations(article)
+    return {"code": code, "article": article, "date": date, "trouve": False, "brut": None,
+            "plusieurs": True,
+            "message": refus or "Plusieurs articles désignés : les résoudre avec resoudre_plusieurs."}
+
+
+def _plusieurs(texte):
+    """Vrai si la désignation porte sur plusieurs articles, ou sur une plage, ou dit « et suivants »."""
+    elements, refus = _designations(texte)
+    return bool(refus) or len(elements) > 1 or any(e[0] == "plage" for e in elements)
+
+
+def _plan(tid, date):
+    """Plan d'un texte (/consult/legiPart) à la date, gardé pour la durée du processus (voir
+    `resoudre_subdivision`)."""
+    ck = (tid, _ms(date))
+    r = _TOC_CACHE.get(ck)
+    if r is None:
+        r = _post("/consult/legiPart", {"textId": tid, "date": _ms(date)})
+        if len(_TOC_CACHE) > 40:
+            _TOC_CACHE.clear()
+        _TOC_CACHE[ck] = r
+    return r
+
+
+def _numeros_du_plan(noeud, acc):
+    """Numéros des articles d'un plan, dans l'ordre du texte. Articles et sections d'un même niveau
+    sont rangés ensemble selon leur rang (`intOrdre`) : la liste que renvoie PISTE n'est pas dans
+    cet ordre (loi n° 78-17 : l'article 5-1 après l'article 7, le titre IV avant le titre Ier ;
+    constaté le 02/11/2026). Le plan d'un code à une date ne contient que les articles en vigueur
+    à cette date ; un article abrogé, s'il figure au plan, est écarté. Un numéro présent deux fois
+    n'est gardé qu'une fois (34 numéros en double, dans les mêmes titres, dans le plan du code de
+    l'environnement)."""
+    elements = [(a.get("intOrdre"), 0, a) for a in noeud.get("articles") or []] + \
+               [(sec.get("intOrdre"), 1, sec) for sec in noeud.get("sections") or []]
+    if all(e[0] is not None for e in elements):
+        elements.sort(key=lambda e: e[0])
+    for _, est_section, x in elements:
+        if est_section:
+            _numeros_du_plan(x, acc)
+        elif x.get("num") and x["num"] not in acc and not str(x.get("etat") or "").startswith(_HORS_VIGUEUR):
+            acc.append(x["num"])
+    return acc
+
+
+_HORS_VIGUEUR = ("ABROGE", "PERIME", "ANNULE", "TRANSFERE", "DISJOINT")
+
+
+_PLAGE_MAX = 100
+
+
+def _cle_numero(num):
+    """Numéro d'article comparable : sans espaces ni points, casse repliée (« L. 181-18 » et
+    « L181-18 »)."""
+    return _fold(re.sub(r"[\s.]", "", _sans_subdivision(num or "")))
+
+
+def resoudre_plusieurs(code, designation, date, exact=True):
+    """Résout une désignation de plusieurs articles d'un code ou d'une loi : liste (« articles
+    L. 181-18 et L. 181-19 ») ou plage (« L. 181-18 à L. 181-20 »), lue par `_designations`.
+    Une plage est développée avec le plan du texte à la date, qui ne contient que les articles
+    alors en vigueur ; elle est refusée au-delà de 100 articles. Chaque article est ensuite résolu
+    par `resoudre` (exact=True par défaut : un autre article que celui demandé est écarté).
+
+    Renvoie {"designation", "date", "trouve", "articles", "message"?, "panne"?} : `articles`, les
+    réponses de `resoudre`, dans l'ordre ; `trouve` True si tous ont été trouvés."""
+    reponse = {"designation": designation, "date": date, "trouve": False, "articles": []}
+    elements, refus = _designations(designation)
+    if refus:
+        reponse["message"] = refus
+        return reponse
+    numeros = []
+    for e in elements:
+        if e[0] == "article":
+            numeros.append(e[1])
+            continue
+        _, premier, dernier = e
+        loi = not code_connu(code) and _RE_NUM_LOI.search(code or "")
+        try:
+            tid = _legitext_loi(loi.group(1))[0] if loi else _legitext_code(code)
+            plan = _numeros_du_plan(_plan(tid, date), []) if tid else []
+        except Exception as ex:
+            reponse.update(panne=_panne(ex), message="Plan du texte illisible : plage non développée.")
+            return reponse
+        index = {_cle_numero(n): i for i, n in reversed(list(enumerate(plan)))}
+        i, j = index.get(_cle_numero(premier)), index.get(_cle_numero(dernier))
+        if i is None or j is None:
+            absent = premier if i is None else dernier
+            reponse["message"] = f"Plage « {premier} à {dernier} » : l'article {absent} n'est pas en vigueur au {date}."
+            return reponse
+        if j < i:
+            reponse["message"] = f"Plage « {premier} à {dernier} » : le premier article suit le dernier dans le plan."
+            return reponse
+        if j - i + 1 > _PLAGE_MAX:
+            reponse["message"] = f"Plage « {premier} à {dernier} » : plus de {_PLAGE_MAX} articles."
+            return reponse
+        numeros += plan[i:j + 1]
+    for num in numeros:
+        r = resoudre(code, num, date, exact=exact)
+        reponse["articles"].append(r)
+        if r.get("panne") and "panne" not in reponse:
+            reponse["panne"] = r["panne"]
+    reponse["trouve"] = bool(reponse["articles"]) and all(r.get("trouve") for r in reponse["articles"])
+    return reponse
 
 
 # ---------- jurisprudence constitutionnelle (fonds CONSTIT) ----------
